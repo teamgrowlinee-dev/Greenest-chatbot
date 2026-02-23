@@ -163,46 +163,59 @@
 
 <h2><span class="section-num">2. Product integration</span></h2>
 
-<p>The widget displays products as recipe ingredients. Product data comes from the <strong>AI_catalog</strong> sheet in Google Sheets. For the widget to work correctly with your store's actual products, the following conditions must be met:</p>
+<p>The widget displays products as recipe ingredients. The chatbot's product catalogue is maintained on the Growlinee side and must reflect your actual store inventory. Your products come from your own database — we need a way to keep our catalogue in sync with your system.</p>
 
-<h3>2.1 Product ID must match your cart API</h3>
+<h3>2.1 How the cart call works</h3>
 
-<p>When a user adds a recipe to the cart, the widget sends the product ID to your cart API like this:</p>
+<p>When a user adds a recipe to the cart, the widget sends the product ID directly to your cart API:</p>
 
 <pre>POST https://api.greenest.ee/api/cart/item/add
 Body: { "product_id": "114", "quantity": 1 }</pre>
 
-<p><strong>Requirement:</strong> The <code>product_id</code> column in the AI_catalog sheet must contain exactly the same IDs that your <code>api.greenest.ee/api/cart/</code> recognises.</p>
+<p><strong>Critical requirement:</strong> The product IDs used by the chatbot must exactly match the IDs that your cart API (<code>api.greenest.ee/api/cart/</code>) recognises. If they don't match, the cart call will fail silently.</p>
 
-<h3>2.2 AI_catalog sheet structure</h3>
-<p>The <strong>AI_catalog</strong> Google Sheet must have the following columns:</p>
+<h3>2.2 What we need from you — product data feed</h3>
+
+<p>To keep the chatbot catalogue in sync with your product database, please provide one of the following:</p>
 
 <table>
-  <tr><th>Column</th><th>Description</th><th>Required?</th><th>Example</th></tr>
-  <tr><td><code>id</code></td><td>Product ID (must match cart API)</td><td>✅ Yes</td><td>114</td></tr>
+  <tr><th>Option</th><th>How it works</th><th>Effort</th></tr>
+  <tr>
+    <td><strong>A) Products API endpoint</strong> (preferred)</td>
+    <td>A public or authenticated endpoint that returns your product list as JSON. We set up an automated sync (runs daily or on demand).</td>
+    <td>Low — we handle the sync once you share the endpoint URL and any auth token</td>
+  </tr>
+  <tr>
+    <td><strong>B) CSV / JSON export</strong></td>
+    <td>Export your product catalogue from your CMS or database and send it to us. We import it manually.</td>
+    <td>Low — send us the file whenever products change significantly</td>
+  </tr>
+</table>
+
+<h3>2.3 Required product fields</h3>
+<p>Whichever method you use, we need the following fields per product:</p>
+
+<table>
+  <tr><th>Field</th><th>Description</th><th>Required?</th><th>Example</th></tr>
+  <tr><td><code>id</code></td><td>Product ID — <strong>must match your cart API exactly</strong></td><td>✅ Yes</td><td>114</td></tr>
   <tr><td><code>name</code></td><td>Product name</td><td>✅ Yes</td><td>Organic Spelt Noodles 250g</td></tr>
   <tr><td><code>price</code></td><td>Price (EUR)</td><td>✅ Yes</td><td>3.88</td></tr>
   <tr><td><code>imageUrl</code></td><td>Product image URL</td><td>✅ Yes</td><td>https://api.greenest.ee/storage/…</td></tr>
   <tr><td><code>url</code></td><td>Product page URL on your site</td><td>✅ Yes</td><td>https://greenest.ee/en/product/…</td></tr>
-  <tr><td><code>inStock</code></td><td>In stock?</td><td>✅ Yes</td><td>TRUE / FALSE</td></tr>
+  <tr><td><code>inStock</code></td><td>In stock? (true/false)</td><td>✅ Yes</td><td>true</td></tr>
   <tr><td><code>stockLevel</code></td><td>Stock quantity</td><td>Recommended</td><td>56</td></tr>
   <tr><td><code>category</code></td><td>Product category</td><td>Recommended</td><td>Pasta and noodles</td></tr>
-  <tr><td><code>chatbotDescription</code></td><td>Short description for the chatbot</td><td>Recommended</td><td>Organic spelt pasta for children</td></tr>
-  <tr><td><code>diet_vegan</code></td><td>Vegan-friendly?</td><td>Optional</td><td>TRUE / FALSE</td></tr>
-  <tr><td><code>diet_glutenFree</code></td><td>Gluten-free?</td><td>Optional</td><td>TRUE / FALSE</td></tr>
+  <tr><td><code>description</code></td><td>Short product description</td><td>Recommended</td><td>Organic spelt pasta for children</td></tr>
+  <tr><td><code>diet_vegan</code></td><td>Vegan-friendly?</td><td>Optional</td><td>true / false</td></tr>
+  <tr><td><code>diet_glutenFree</code></td><td>Gluten-free?</td><td>Optional</td><td>true / false</td></tr>
 </table>
 
-<h3>2.3 Keeping the product catalogue up to date</h3>
-
-<p>The catalogue is currently updated manually. We recommend one of two approaches:</p>
-
-<ul>
-  <li><strong>Manual export:</strong> Export your products as a CSV from your system and import into Google Sheets regularly (e.g. weekly)</li>
-  <li><strong>Automatic sync:</strong> If your backend has a products API endpoint, we can build an n8n automation that syncs changes automatically (Growlinee can set this up)</li>
-</ul>
+<div class="note">
+  <strong>Note:</strong> You do not need to set up or manage any Google Sheets yourself. Product data management is handled entirely on the Growlinee side — we just need you to provide the data feed (API or export).
+</div>
 
 <div class="important">
-  <strong>Important:</strong> If a product ID in AI_catalog does not match the cart API ID, the product will not be added to the cart. Always verify that IDs are exactly the same — including format (e.g. <code>"114"</code> not <code>114</code>).
+  <strong>Important:</strong> The product <code>id</code> field must be exactly the same value that your cart API uses. Verify this carefully — a mismatch in format (e.g. <code>"114"</code> vs <code>114</code>) will cause cart additions to fail.
 </div>
 
 <hr />
