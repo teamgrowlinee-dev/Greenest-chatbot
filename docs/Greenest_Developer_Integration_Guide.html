@@ -109,6 +109,10 @@
   <li><strong>Ostukorv</strong> – ühendatakse teie saidiga <code>cartAdapter</code> kaudu (vt jaotis 3)</li>
 </ul>
 
+<div class="important">
+  <strong>⚠️ Kriitiline nõue enne integreerimist:</strong> Greenesti toodete ID-d <strong>AI_catalog</strong> Google Sheetsis peavad täpselt kattuma sellega, mida teie cart API (<code>api.greenest.ee/api/cart/item/add</code>) tunnustab. Kui ID-d ei kattu, lisatakse retsept küll visuaalselt ostukorvi, kuid tegelik cart API päring ebaõnnestub. Kontrollige see üle enne live'i minekut (vt jaotis 2).
+</div>
+
 <h2><span class="section-num">1. Widget'i paigaldamine (embed)</span></h2>
 
 <h3>Meetod A — Üherealine loader (soovitatav)</h3>
