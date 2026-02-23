@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="et">
+<head>
+<meta charset="UTF-8" />
+<title>Greenest Chatbot Widget – Arendaja integratsioonijuhend</title>
+<style>
+  /* Word-compatible styling */
+  @page { margin: 2.5cm 3cm; }
+  body {
+    font-family: 'Calibri', 'Arial', sans-serif;
+    font-size: 11pt;
+    line-height: 1.5;
+    color: #1a1a1a;
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 40px;
+  }
+  h1 { font-size: 20pt; color: #1a6b3c; border-bottom: 2px solid #1a6b3c; padding-bottom: 8px; }
+  h2 { font-size: 14pt; color: #1a6b3c; margin-top: 32px; border-bottom: 1px solid #cce5d6; padding-bottom: 4px; }
+  h3 { font-size: 12pt; color: #2d5a3d; margin-top: 20px; }
+  p { margin: 8px 0; }
+  code {
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 9.5pt;
+    background: #f4f9f6;
+    border: 1px solid #cce5d6;
+    border-radius: 3px;
+    padding: 1px 4px;
+  }
+  pre {
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 9pt;
+    background: #f4f9f6;
+    border: 1px solid #cce5d6;
+    border-left: 4px solid #1a6b3c;
+    border-radius: 4px;
+    padding: 14px 16px;
+    margin: 12px 0;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 14px 0;
+    font-size: 10pt;
+  }
+  th {
+    background: #1a6b3c;
+    color: white;
+    padding: 8px 12px;
+    text-align: left;
+  }
+  td {
+    border: 1px solid #cce5d6;
+    padding: 7px 12px;
+  }
+  tr:nth-child(even) td { background: #f4f9f6; }
+  .note {
+    background: #fff8e1;
+    border-left: 4px solid #f9a825;
+    border-radius: 4px;
+    padding: 10px 14px;
+    margin: 14px 0;
+  }
+  .important {
+    background: #fce8e8;
+    border-left: 4px solid #c62828;
+    border-radius: 4px;
+    padding: 10px 14px;
+    margin: 14px 0;
+  }
+  .ok {
+    background: #e8f5e9;
+    border-left: 4px solid #2e7d32;
+    border-radius: 4px;
+    padding: 10px 14px;
+    margin: 14px 0;
+  }
+  ul { margin: 8px 0; padding-left: 22px; }
+  li { margin: 4px 0; }
+  .meta { color: #555; font-size: 10pt; }
+  .section-num { color: #1a6b3c; font-weight: bold; }
+  hr { border: none; border-top: 1px solid #cce5d6; margin: 28px 0; }
+</style>
+</head>
+<body>
+
+<h1>Greenest Chatbot Widget<br><span style="font-weight:normal;font-size:14pt">Arendaja integratsioonijuhend</span></h1>
+
+<p class="meta">
+  Koostanud: Growlinee &nbsp;|&nbsp;
+  Versioon: 1.0 &nbsp;|&nbsp;
+  Kuupäev: veebruar 2026 &nbsp;|&nbsp;
+  Kontakt: <a href="mailto:team.growlinee@gmail.com">team.growlinee@gmail.com</a>
+</p>
+
+<hr />
+
+<h2><span class="section-num">Ülevaade</span></h2>
+
+<p>Greenest chatbot widget on retseptiassistent, mis aitab teie klientidel leida retsepte ja lisada vajalikke tooteid ostukorvi. Widget on kirjutatud puhtas JavaScriptis ja ei sõltu ühelegi raamistikult – sobib igasse veebilehte olenemata tehnoloogiast (Nuxt, Next.js, Laravel, staatilised HTML-lehed jne).</p>
+
+<p><strong>Arhitektuur:</strong></p>
+<ul>
+  <li><strong>Widget JS/CSS</strong> – laetakse Growlinee Render serverist (<code>https://greenest-chatbot.onrender.com</code>)</li>
+  <li><strong>Retseptid ja tooted</strong> – päritakse Google Apps Scriptist, andmed Google Sheetsis</li>
+  <li><strong>Ostukorv</strong> – ühendatakse teie saidiga <code>cartAdapter</code> kaudu (vt jaotis 3)</li>
+</ul>
+
+<h2><span class="section-num">1. Widget'i paigaldamine (embed)</span></h2>
+
+<h3>Meetod A — Üherealine loader (soovitatav)</h3>
+<p>Lisage oma veebilehe <code>&lt;head&gt;</code> sektsiooni üks rida:</p>
+
+<pre>&lt;script src="https://greenest-chatbot.onrender.com/widget/loader.js" defer&gt;&lt;/script&gt;</pre>
+
+<p>See laadib automaatselt nii CSS-i kui ka widget JS-i. Enne seda rida saate lisada oma konfiguratsiooniobjekti:</p>
+
+<pre>&lt;script&gt;
+  window.GREENEST_WIDGET_CONFIG = {
+    // Teie saidile omased seaded (ülekirjutavad vaikeväärtused)
+    vendor: "greenest",
+    recipeOnlyMode: true,
+    defaultServings: 2,
+    storeLocale: "et",           // "et" või "en"
+    cartAdapterMode: "hybrid",   // kasutab automaatselt teie cart API-t
+
+    // Vajadusel: custom cart adapter (vt jaotis 3)
+    // cartAdapter: { ... }
+  };
+&lt;/script&gt;
+&lt;script src="https://greenest-chatbot.onrender.com/widget/loader.js" defer&gt;&lt;/script&gt;</pre>
+
+<h3>Meetod B — Käsitsi failiviited</h3>
+<pre>&lt;!-- CSS --&gt;
+&lt;link rel="stylesheet" href="https://greenest-chatbot.onrender.com/widget/greenest-widget.css" /&gt;
+
+&lt;!-- Konfiguratsioon --&gt;
+&lt;script&gt;
+  window.GREENEST_WIDGET_CONFIG = {
+    apiUrl: "https://script.google.com/macros/s/AKfycby.../exec",
+    siteToken: "greenest_live_9f3a7c1d8e24b5c0a91f6e2b47d8a3c1",
+    vendor: "greenest",
+    recipeOnlyMode: true,
+    cartAdapterMode: "hybrid"
+  };
+&lt;/script&gt;
+
+&lt;!-- Widget JS --&gt;
+&lt;script src="https://greenest-chatbot.onrender.com/widget/greenest-widget.js" defer&gt;&lt;/script&gt;</pre>
+
+<div class="note">
+  <strong>Märkus CORS kohta:</strong> Widget teeb päringuid <code>script.google.com</code> aadressile. Teie serveri poolel CORS-i muutmist ei ole vaja – see toimib brauserist otse.
+</div>
+
+<hr />
+
+<h2><span class="section-num">2. Toodete integratsioon</span></h2>
+
+<p>Widget kuvab tooteid retseptide koostisosadena. Toodete andmed pärinevad Google Sheetsi <strong>AI_catalog</strong> lehelt. Selleks et widget töötaks korrektselt teie tegeliku poe toodetega, peavad täidetud olema järgmised tingimused:</p>
+
+<h3>2.1 Toote ID peab kattuma teie cart API-ga</h3>
+
+<p>Kui kasutaja lisab retsepti ostukorvi, saadab widget teie cart API-le toote ID selliselt:</p>
+
+<pre>POST https://api.greenest.ee/api/cart/item/add
+Body: { "product_id": "114", "quantity": 1 }</pre>
+
+<p><strong>Nõue:</strong> AI_catalog lehel olev <code>product_id</code> veerg peab sisaldama täpselt samu ID-sid, mida teie <code>api.greenest.ee/api/cart/</code> tunnistab.</p>
+
+<h3>2.2 AI_catalog lehe struktuur</h3>
+<p>Google Sheetsi lehe <strong>AI_catalog</strong> veerud peavad olema järgmised:</p>
+
+<table>
+  <tr><th>Veerg</th><th>Kirjeldus</th><th>Nõutav?</th><th>Näide</th></tr>
+  <tr><td><code>id</code></td><td>Toote ID (peab kattuma cart API-ga)</td><td>✅ Jah</td><td>114</td></tr>
+  <tr><td><code>name</code></td><td>Toote nimi</td><td>✅ Jah</td><td>Mahedad Mie nuudlid speltast 250g</td></tr>
+  <tr><td><code>price</code></td><td>Hind (EUR)</td><td>✅ Jah</td><td>3.88</td></tr>
+  <tr><td><code>imageUrl</code></td><td>Toote pildiga URL</td><td>✅ Jah</td><td>https://api.greenest.ee/storage/…</td></tr>
+  <tr><td><code>url</code></td><td>Toote lehe URL teie saidil</td><td>✅ Jah</td><td>https://greenest.ee/et/toode/…</td></tr>
+  <tr><td><code>inStock</code></td><td>Laos olemas?</td><td>✅ Jah</td><td>TRUE / FALSE</td></tr>
+  <tr><td><code>stockLevel</code></td><td>Laoseis (kogus)</td><td>Soovitatav</td><td>56</td></tr>
+  <tr><td><code>category</code></td><td>Tootekategooria</td><td>Soovitatav</td><td>Pasta ja nuudlid</td></tr>
+  <tr><td><code>chatbotDescription</code></td><td>Lühikirjeldus chatbotile</td><td>Soovitatav</td><td>Mahe speltapasta lastele</td></tr>
+  <tr><td><code>diet_vegan</code></td><td>Vegansõbralik?</td><td>Valikuline</td><td>TRUE / FALSE</td></tr>
+  <tr><td><code>diet_glutenFree</code></td><td>Gluteenivaba?</td><td>Valikuline</td><td>TRUE / FALSE</td></tr>
+</table>
+
+<h3>2.3 Toodete kataloogi hoidmine ajakohasena</h3>
+
+<p>Praegu uuendatakse kataloogi käsitsi. Soovitame kahte lähenemist:</p>
+
+<ul>
+  <li><strong>Käsitsi eksport:</strong> Exportige tooted CSV-na oma süsteemist ja importige Google Sheetsisse regulaarselt (nt iganädalaselt)</li>
+  <li><strong>Automaatne sünkroniseerimine:</strong> Kui teie backendil on toodete API endpoint, saame ehitada n8n automatisatsiooni, mis sünkroniseerib muutused automaatselt (Growlinee saab selle seadistada)</li>
+</ul>
+
+<div class="important">
+  <strong>Tähtis:</strong> Kui toote ID AI_catalog lehel ei kattu cart API ID-ga, ei lisata toodet ostukorvi. Kontrollige alati, et ID-d on täpselt samad (sama formaat – nt "114" mitte 114).
+</div>
+
+<hr />
+
+<h2><span class="section-num">3. Ostukorvi integratsioon</span></h2>
+
+<h3>3.1 Automaatne adapter (soovitatav – ei nõua arendust)</h3>
+
+<p>Widget sisaldab sisseehitatud adapterit, mis tunneb automaatselt ära <code>greenest.ee</code> domeeni ja kasutab teie cart API-t otse:</p>
+
+<pre>// Widget kutsub automaatselt neid endpoint'e:
+GET  https://api.greenest.ee/api/cart/content/token   → saab sessiooni tokeni
+POST https://api.greenest.ee/api/cart/item/add        → lisab ühe toote
+POST https://api.greenest.ee/api/cart/item/add-many   → lisab mitu toodet korraga
+GET  https://api.greenest.ee/api/cart/content/list    → pärib korvi sisu</pre>
+
+<p>Selleks et automaatne adapter töötaks, peavad need endpoint'id:</p>
+<ul>
+  <li>Olema kättesaadavad <code>https://api.greenest.ee/api/cart/</code> aadressil</li>
+  <li>Toetama <code>Cart-Session-Token</code> header-it autentimiseks</li>
+  <li>Tagastama JSON vastused (vt allpool)</li>
+  <li>Lubama CORS päringuid <code>greenest.ee</code> domeenilt</li>
+</ul>
+
+<h3>3.2 Endpoint'ide oodatav formaat</h3>
+
+<pre>// GET /api/cart/content/token
+// Vastus:
+{ "data": { "token": "abc123xyz", "expires_in": 7776000 } }
+
+// POST /api/cart/item/add
+// Päring:
+{ "product_id": "114", "quantity": 1 }
+// Vastus (edukad):
+{ "ok": true } // või mis iganes teie API tagastab
+
+// GET /api/cart/content/list
+// Vastus:
+{
+  "data": [
+    { "product_id": "114", "name": "Pasta", "quantity": 2, "price": 3.88 },
+    ...
+  ]
+}</pre>
+
+<h3>3.3 Custom adapter (kui vajate erilist käitumist)</h3>
+
+<p>Kui soovite täpsemalt kontrollida, mis juhtub ostukorvi lisamisel, kasutage custom adapterit:</p>
+
+<pre>&lt;script&gt;
+  window.GREENEST_WIDGET_CONFIG = {
+    // ... muud seaded ...
+    cartAdapterMode: "external",  // lülitab automaatse adapteri välja
+    cartAdapter: {
+
+      // Kutsutakse kui kasutaja vajutab "Lisa ostukorvi"
+      // items = tootemassiiv: [{ product_id, name, qty_base, unit, price, ... }]
+      // context = { sessionId, recipeId, servings, clientId }
+      addItems: function(items, context) {
+        items.forEach(function(item) {
+          // Teie enda ostukorvi loogika
+          myStore.cart.add(item.product_id, item.qty_base);
+        });
+      },
+
+      // Kutsutakse kui kasutaja vajutab korvi ikooni
+      openCart: function(items, context) {
+        myStore.cart.open();
+      },
+
+      // Peab tagastama checkout URL-i stringina
+      getCheckoutUrl: function(items, context) {
+        return "https://greenest.ee/et/checkout?session=" + context.sessionId;
+      }
+    }
+  };
+&lt;/script&gt;</pre>
+
+<div class="ok">
+  <strong>Soovitatav lähenemine:</strong> Kasutage <code>cartAdapterMode: "hybrid"</code> koos <code>cartAdapter</code> objektiga. Sellisel juhul kasutab widget teie adapterit kui see on olemas, muidu langeb tagasi automaatsele adapterile.
+</div>
+
+<hr />
+
+<h2><span class="section-num">4. CORS konfiguratsioon</span></h2>
+
+<p>Widget teeb brauserist päringuid kolmele aadressile. Kontrollige, et teie server lubab need:</p>
+
+<table>
+  <tr><th>Päringute sihtkoht</th><th>Kellelt peab tulema</th><th>Mida teha?</th></tr>
+  <tr>
+    <td><code>script.google.com</code> (Apps Script)</td>
+    <td>Brauserist</td>
+    <td>Ei nõua muudatusi – Google haldab CORS-i ise</td>
+  </tr>
+  <tr>
+    <td><code>api.greenest.ee/api/cart/</code></td>
+    <td><code>greenest.ee</code> domeenilt</td>
+    <td>✅ Peate lubama CORS päringud <code>greenest.ee</code> ja <code>www.greenest.ee</code> domeenilt</td>
+  </tr>
+  <tr>
+    <td><code>greenest-chatbot.onrender.com</code></td>
+    <td>Brauserist (staatiline)</td>
+    <td>Ei nõua muudatusi – meie server lubab kõiki päringuid</td>
+  </tr>
+</table>
+
+<h3>CORS header näide (teie backend)</h3>
+<pre>// Lubage need päritolud:
+Access-Control-Allow-Origin: https://greenest.ee
+Access-Control-Allow-Origin: https://www.greenest.ee
+Access-Control-Allow-Methods: GET, POST, OPTIONS
+Access-Control-Allow-Headers: Content-Type, Cart-Session-Token, App-Language</pre>
+
+<hr />
+
+<h2><span class="section-num">5. Kiire testleht (arenduseks)</span></h2>
+
+<p>Testimiseks looge ajutine HTML-fail ja avage brauseris:</p>
+
+<pre>&lt;!DOCTYPE html&gt;
+&lt;html lang="et"&gt;
+&lt;head&gt;
+  &lt;meta charset="UTF-8"&gt;
+  &lt;title&gt;Greenest Widget Test&lt;/title&gt;
+  &lt;script&gt;
+    window.GREENEST_WIDGET_CONFIG = {
+      vendor: "greenest",
+      recipeOnlyMode: true,
+      cartAdapterMode: "hybrid",
+      enableChatLogging: true,
+      debug: true,  // lisab konsooli logid
+      cartAdapter: {
+        addItems: function(items, ctx) {
+          console.log("Lisa korvi:", items, ctx);
+          alert("Korvi lisatud: " + items.length + " toodet");
+        },
+        openCart: function() { console.log("Ava korv"); },
+        getCheckoutUrl: function() { return "https://greenest.ee/et/checkout"; }
+      }
+    };
+  &lt;/script&gt;
+  &lt;script src="https://greenest-chatbot.onrender.com/widget/loader.js" defer&gt;&lt;/script&gt;
+&lt;/head&gt;
+&lt;body&gt;
+  &lt;h1&gt;Test leht&lt;/h1&gt;
+  &lt;p&gt;Widget peaks ilmuma paremas allnurgas.&lt;/p&gt;
+&lt;/body&gt;
+&lt;/html&gt;</pre>
+
+<hr />
+
+<h2><span class="section-num">6. Kontroll-loend enne live'i minekut</span></h2>
+
+<table>
+  <tr><th>#</th><th>Ülesanne</th><th>Vastutaja</th><th>Staatus</th></tr>
+  <tr><td>1</td><td>Lisada loader script <code>&lt;head&gt;</code> sektsiooni</td><td>Greenesti arendaja</td><td>☐</td></tr>
+  <tr><td>2</td><td>Kontrollida et toote ID-d AI_catalog lehel kattuvad cart API ID-dega</td><td>Greenesti arendaja</td><td>☐</td></tr>
+  <tr><td>3</td><td>CORS lubada <code>greenest.ee</code> jaoks <code>api.greenest.ee/api/cart/</code> peal</td><td>Greenesti arendaja</td><td>☐</td></tr>
+  <tr><td>4</td><td>Testida ostukorvi lisamist staging keskkonnas</td><td>Mõlemad</td><td>☐</td></tr>
+  <tr><td>5</td><td>AI_catalog kataloog üle vaadata – hinnad, stock, pildid ajakohased</td><td>Greenest</td><td>☐</td></tr>
+  <tr><td>6</td><td>Kontrollida et widget ilmub õigesse kohta lehel</td><td>Greenesti arendaja</td><td>☐</td></tr>
+</table>
+
+<hr />
+
+<h2><span class="section-num">7. Kontakt ja tugi</span></h2>
+<p>Küsimuste korral võtke ühendust:</p>
+<ul>
+  <li><strong>Growlinee (Robin Rukis)</strong> – <a href="mailto:team.growlinee@gmail.com">team.growlinee@gmail.com</a></li>
+  <li>GitHub repo: <a href="https://github.com/teamgrowlinee-dev/Greenest-chatbot">github.com/teamgrowlinee-dev/Greenest-chatbot</a></li>
+</ul>
+
+</body>
+</html>

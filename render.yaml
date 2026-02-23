@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: greenest-chatbot
+    env: node
+    region: frankfurt
+    plan: free
+    buildCommand: cd server && npm install
+    startCommand: cd server && node index.js
+    envVars:
+      - key: APPS_SCRIPT_URL
+        value: https://script.google.com/macros/s/AKfycbw8Hpgwr4NgRtN0lpucsNgXU9sCYCKfvgUyl7IEBKjaOxunfNir3PFcwCn-t7qkTF1P/exec
+      - key: SITE_TOKEN
+        value: greenest_live_9f3a7c1d8e24b5c0a91f6e2b47d8a3c1
