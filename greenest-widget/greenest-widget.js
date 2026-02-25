@@ -895,6 +895,7 @@ const DRAWER_FADE_MS = 220;
       this.loadExternalCartSnapshot();
       this.startLauncherNudge();
       this.fetchRecipes();
+      this.initPublicApi();
       this.initDebugHooks();
       this.trackEvent("widget_loaded", { assisted: 0, reason: "auto" });
       document.addEventListener("keydown", this.boundHandleKeyDown);
@@ -2201,6 +2202,14 @@ const DRAWER_FADE_MS = 220;
       }
     }
 
+    initPublicApi() {
+      window.GREENEST_WIDGET_API = window.GREENEST_WIDGET_API || {};
+      window.GREENEST_WIDGET_API.addProductsToCart = (products) =>
+        this.addProductsToCart(products);
+      window.GREENEST_WIDGET_API.refreshCartRecipeCandidates = (productIds) =>
+        this.refreshCartRecipeCandidates(productIds);
+    }
+
     initDebugHooks() {
       if (!this.debug) return;
       window.GREENEST_WIDGET_DEBUG = window.GREENEST_WIDGET_DEBUG || {};
@@ -2232,11 +2241,6 @@ const DRAWER_FADE_MS = 220;
       };
       window.GREENEST_WIDGET_DEBUG.forceBanner = () =>
         this.maybeShowCartBanner("force", { ignoreCooldown: true });
-      window.GREENEST_WIDGET_API = window.GREENEST_WIDGET_API || {};
-      window.GREENEST_WIDGET_API.addProductsToCart = (products) =>
-        this.addProductsToCart(products);
-      window.GREENEST_WIDGET_API.refreshCartRecipeCandidates = (productIds) =>
-        this.refreshCartRecipeCandidates(productIds);
       window.GREENEST_WIDGET_DEBUG.getConfig = () => ({
         webAppUrl: this.webAppUrl,
         siteToken: this.siteToken,
