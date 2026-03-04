@@ -4306,11 +4306,17 @@ const DRAWER_FADE_MS = 220;
     }
   }
 
-  document.addEventListener("DOMContentLoaded", () => {
+  function tryInit() {
     if (document.querySelector(".greenest-widget")) {
       return;
     }
     const widget = new GreenestWidget();
     widget.init();
-  });
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", tryInit);
+  } else {
+    tryInit();
+  }
 })();
