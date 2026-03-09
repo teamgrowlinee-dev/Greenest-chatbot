@@ -122,6 +122,33 @@ function normalizeCartAdapterMode(mode) {
   return "hybrid";
 }
 
+function getRuntimeWidgetConfig() {
+  const liveConfig = window.GREENEST_WIDGET_CONFIG;
+  if (isObject(liveConfig)) return liveConfig;
+  if (typeof GLOBAL_WIDGET_CONFIG !== "undefined" && isObject(GLOBAL_WIDGET_CONFIG)) {
+    return GLOBAL_WIDGET_CONFIG;
+  }
+  return {};
+}
+
+function hasExplicitCartAdapter(config) {
+  if (!isObject(config)) return false;
+  if (isObject(config.cartAdapter)) return true;
+  return isObject(config.cart) && isObject(config.cart.adapter);
+}
+
+function resolveRuntimeCartAdapterState() {
+  const config = getRuntimeWidgetConfig();
+  const adapter = resolveCartAdapter(config);
+  const mode = normalizeCartAdapterMode(
+    config.cartAdapterMode ||
+      (adapter && adapter.mode) ||
+      (config.cart && config.cart.mode) ||
+      DEFAULT_CART_ADAPTER_MODE
+  );
+  return { adapter, mode };
+}
+
 function getCookieValueByName(name) {
   const needle = `${String(name || "").trim()}=`;
   if (!needle || needle === "=") return "";
@@ -624,6 +651,78 @@ const GREENEST_CHAT_STORE_ORIGIN = String(
 const GREENEST_CHAT_CART_ID = String(GLOBAL_WIDGET_CONFIG.cartId || "").trim();
 const DRAWER_FADE_MS = 220;
 
+function attachCartAdapterToWidget(widget, adapter, mode, options = {}) {
+  if (!widget || !isObject(adapter)) return false;
+  const nextMode = normalizeCartAdapterMode(
+    mode || adapter.mode || getRuntimeWidgetConfig().cartAdapterMode || DEFAULT_CART_ADAPTER_MODE
+  );
+  const changed =
+    widget.cartAdapter !== adapter || widget.cartAdapterMode !== nextMode;
+  widget.cartAdapter = adapter;
+  widget.cartAdapterMode = nextMode;
+  if (
+    options.hydrate !== false &&
+    (changed || widget.externalCartHydrated !== true || options.forceHydrate === true)
+  ) {
+    widget.loadExternalCartSnapshot();
+  }
+  return true;
+}
+
+function syncRuntimeCartAdapter(widget, options = {}) {
+  const runtimeState = resolveRuntimeCartAdapterState();
+  return attachCartAdapterToWidget(
+    widget,
+    runtimeState.adapter,
+    runtimeState.mode,
+    options
+  );
+}
+
+function stopRuntimeCartAdapterPolling(widget) {
+  if (!widget || !widget._cartAdapterPollTimer) return;
+  window.clearInterval(widget._cartAdapterPollTimer);
+  widget._cartAdapterPollTimer = 0;
+}
+
+function startRuntimeCartAdapterPolling(widget) {
+  if (!widget || widget._cartAdapterPollTimer) return;
+  const deadline = Date.now() + 5000;
+  widget._cartAdapterPollTimer = window.setInterval(() => {
+    if (window.GreenestWidgetInstance !== widget) {
+      stopRuntimeCartAdapterPolling(widget);
+      return;
+    }
+    if (hasExplicitCartAdapter(getRuntimeWidgetConfig())) {
+      syncRuntimeCartAdapter(widget, { forceHydrate: true });
+      stopRuntimeCartAdapterPolling(widget);
+      return;
+    }
+    if (Date.now() >= deadline) {
+      stopRuntimeCartAdapterPolling(widget);
+    }
+  }, 100);
+}
+
+function dispatchWidgetReadyEvent(widget) {
+  if (!widget || widget._readyEventDispatched === true) return;
+  widget._readyEventDispatched = true;
+  const detail = {
+    widget,
+    api: window.GREENEST_WIDGET_API || null,
+  };
+  try {
+    window.dispatchEvent(new CustomEvent("greenest-widget-ready", { detail }));
+  } catch (_) {
+    /* ignore */
+  }
+  try {
+    document.dispatchEvent(new CustomEvent("greenest-widget-ready", { detail }));
+  } catch (_) {
+    /* ignore */
+  }
+}
+
 (function () {
   if (
     window.__GREENEST_WIDGET_MOUNTED__ ||
@@ -892,10 +991,16 @@ const DRAWER_FADE_MS = 220;
             /* ignore */
           });
       }
+      this.initPublicApi();
+      window.GreenestWidgetInstance = this;
+      syncRuntimeCartAdapter(this, { hydrate: false });
+      dispatchWidgetReadyEvent(this);
+      if (!hasExplicitCartAdapter(getRuntimeWidgetConfig())) {
+        startRuntimeCartAdapterPolling(this);
+      }
       this.loadExternalCartSnapshot();
       this.startLauncherNudge();
       this.fetchRecipes();
-      this.initPublicApi();
       this.initDebugHooks();
       this.trackEvent("widget_loaded", { assisted: 0, reason: "auto" });
       document.addEventListener("keydown", this.boundHandleKeyDown);
@@ -2204,6 +2309,21 @@ const DRAWER_FADE_MS = 220;
 
     initPublicApi() {
       window.GREENEST_WIDGET_API = window.GREENEST_WIDGET_API || {};
+      window.GREENEST_WIDGET_API.getInstance = () => this;
+      window.GREENEST_WIDGET_API.setCartAdapter = (adapter, mode) => {
+        if (!isObject(adapter)) return false;
+        const config = getRuntimeWidgetConfig();
+        const nextMode = normalizeCartAdapterMode(
+          mode || adapter.mode || config.cartAdapterMode || DEFAULT_CART_ADAPTER_MODE
+        );
+        config.cartAdapter = adapter;
+        config.cartAdapterMode = nextMode;
+        window.GreenestWidgetInstance = this;
+        stopRuntimeCartAdapterPolling(this);
+        return attachCartAdapterToWidget(this, adapter, nextMode, {
+          forceHydrate: true,
+        });
+      };
       window.GREENEST_WIDGET_API.addProductsToCart = (products) =>
         this.addProductsToCart(products);
       window.GREENEST_WIDGET_API.refreshCartRecipeCandidates = (productIds) =>
