@@ -29,16 +29,17 @@ var DEFAULT_ALLOWED_ORIGIN_URLS = [
   'https://greenest.ee/en/food-and-drinks' // ✅ baked in input
 ];
 
-var OPENAI_MODEL = 'gpt-4.1-mini'; // left for future (not used in recipe bank)
+var CLAUDE_MODEL = 'claude-haiku-4-5-20251001'; // Anthropic Claude Haiku – used for support & smalltalk
 
 // Backend attribution/version
 var VENDOR_NAME = 'growlinee';
-var BACKEND_VERSION = 'v4.2';
+var BACKEND_VERSION = 'v4.3';
 
 // Customer support knowledge base (sourced from greenest.ee policy pages)
 var GREENEST_SUPPORT = {
   phone: '+372 51 900 330',
   email: 'sales@greenest.ee',
+  hours: 'E-R 08:00–16:00',
   delivery_url: 'https://greenest.ee/en/pages/delivery',
   returns_url: 'https://greenest.ee/et/pages/tagastusoigus',
   terms_url: 'https://greenest.ee/et/pages/tellimistingimused',
@@ -52,12 +53,13 @@ var GREENEST_SUPPORT = {
 var GREETING_ONLY_RE = /^\s*(tere|tervist|tsau|hei|hello|hey)\s*[!,.?]*\s*$/i;
 var ACK_ONLY_RE = /^\s*(ait[aä]h|t[aä]nan|okei|ok|selge|super|lahe|vahva|j[aä]rjest|mhm|jaa|jah)\s*[!,.?]*\s*$/i;
 var SMALLTALK_RE = /(kuidas l[aä]heb|mis teed|kes sa oled|mida oskad|r[aä][aä]gi endast|small talk|lihtsalt jutustan)/i;
+var ESCALATION_RE = /(pahane|vihane|petetud|pett[au]s|fraud|chargeback|kadunud pakk|makse probleem|ei t[oö][oö]ta|solvav|kaebuse|kaevus|nõuan|nõua)/i;
 
-var SUPPORT_SHIPPING_RE = /(tarne|tarni|k[aä]ttetoimet|kuller|pakiautomaat|smartpost|shipping|kohale|saadetis)/i;
-var SUPPORT_RETURNS_RE = /(tagastus|tagast|return|refund|raha tagasi|pretensioon|reklamatsioon|katki|vigane|riknenud|defekt)/i;
-var SUPPORT_PAYMENT_RE = /(makse|maksta|pangalink|panga[ -]?link|swedbank|seb|luminor|coop|lhv|arve|invoice|maksetasu|payment)/i;
-var SUPPORT_CONTACT_RE = /(kontakt|telefon|helista|e-?mail|epost|klienditugi|support|aadress)/i;
-var SUPPORT_ORDER_RE = /(tellimus|order|tracking|kus mu pakk|kus pakk|tellimuse staatus|staatus)/i;
+var SUPPORT_SHIPPING_RE = /(tarne|tarni|k[aä]ttetoimet|k[aä]tte saa|kauba katte|kuller|pakiautomaat|smartpost|shipping|kohale|saadetis|tarneaeg|tarnekulud|millal j[oõ]uab|millal saab pakk|millal tuleb pakk)/i;
+var SUPPORT_RETURNS_RE = /(tagastus|tagast|return|refund|raha tagasi|pretensioon|reklamatsioon|katki|vigane|riknenud|defekt|garantii|warranty)/i;
+var SUPPORT_PAYMENT_RE = /(makse|maksta|pangalink|panga[ -]?link|swedbank|seb|luminor|coop|lhv|arve|invoice|maksetasu|payment|ülekanne|sooduskood)/i;
+var SUPPORT_CONTACT_RE = /(kontakt|telefon|helista|e-?mail|epost|klienditugi|support|aadress|lahtioleku|t[oö][oö]aeg)/i;
+var SUPPORT_ORDER_RE = /(tellimus|order|tracking|kus mu pakk|kus pakk|tellimuse staatus|staatus|tellimuse number|pakk ei j[oõ]udnud)/i;
 
 /*************************************************
  * Spreadsheet + Properties helpers
@@ -172,58 +174,81 @@ function isOriginAllowed_(origin) {
   return false;
 }
 
-function buildSupportResponse_(intent) {
-  var text = '';
-
+// Per-intent FAQ context – passed to Claude as grounding context (like trenniekspert answer_faq)
+function buildFaqContext_(intent) {
   if (intent === 'support_shipping') {
-    text =
-      'Tarneinfo Greenestis:\n' +
-      '- Tavaline kuller Eestis: 6 EUR\n' +
-      '- Külmakaup üle Eesti: 8 EUR (üle 30 kg erihind)\n' +
-      '- Tootelehtedel on tavapärane tarneaeg 2-7 tööpäeva\n' +
-      '- EL tarned on olemas, tasuta EL tarne puudub\n\n' +
-      'Detailid: ' + GREENEST_SUPPORT.delivery_url;
-  } else if (intent === 'support_returns') {
-    text =
-      'Tagastus Greenestis:\n' +
-      '- Tagastusõigus on 14 päeva kauba kättesaamisest\n' +
-      '- Kaup peab olema kasutamata, vigastamata ja originaalpakendis\n' +
-      '- Kirjuta enne tagastust: ' + GREENEST_SUPPORT.email + '\n' +
-      '- Raha tagastatakse üldjuhul 14 päeva jooksul\n\n' +
-      'Tingimused: ' + GREENEST_SUPPORT.returns_url;
-  } else if (intent === 'support_payment') {
-    text =
-      'Makseinfo Greenestis:\n' +
-      '- Makseviisid: pangaülekanne või pangalink\n' +
-      '- Pangad: Swedbank, SEB, Danske, Luminor, LHV, Coop\n' +
-      '- Pangalinki teenustasu: 0,25 EUR\n' +
-      '- Tellimus läheb töösse pärast 100% makse laekumist\n\n' +
-      'Tingimused: ' + GREENEST_SUPPORT.terms_url;
-  } else if (intent === 'support_contact') {
-    text =
-      'Greenesti kontaktid:\n' +
-      '- Telefon: ' + GREENEST_SUPPORT.phone + '\n' +
-      '- E-post: ' + GREENEST_SUPPORT.email + '\n' +
-      '- Ettevõte: ' + GREENEST_SUPPORT.company + ' (' + GREENEST_SUPPORT.reg_no + ', KMKR ' + GREENEST_SUPPORT.vat + ')\n' +
-      '- Aadress: ' + GREENEST_SUPPORT.address + '\n\n' +
-      'Kontaktileht: ' + GREENEST_SUPPORT.contacts_url;
-  } else if (intent === 'support_order') {
-    text =
-      'Tellimuse abi:\n' +
-      '- Saada meile tellimuse number ja lühike kirjeldus\n' +
-      '- E-post: ' + GREENEST_SUPPORT.email + '\n' +
-      '- Telefon: ' + GREENEST_SUPPORT.phone + '\n' +
-      '- Kontrollime tellimuse staatust ja vastame võimalikult kiiresti\n\n' +
-      'Üldtingimused: ' + GREENEST_SUPPORT.terms_url;
-  } else {
-    text =
-      'Saan aidata nende teemadega: tarne, tagastus, makse, tellimus, kontakt.\n' +
-      'Kontakt: ' + GREENEST_SUPPORT.email + ' / ' + GREENEST_SUPPORT.phone;
+    return (
+      'TARNEINFO:\n' +
+      '- Pakiautomaadid (Smartpost): 4 EUR\n' +
+      '- Tavakuller Eestis: 6 EUR\n' +
+      '- Külmakaup Eestis: 8 EUR (üle 30 kg erihind)\n' +
+      '- Soome: 12,99 EUR; muud EL riigid: 14,90 EUR (kuni 5 kg)\n' +
+      '- Tellimused lukustuvad E ja N kell 08:00; pakk jõuab pakiautomaati laupäeval\n' +
+      '- Pakiautomaadis 7 päeva; kuller SMS-iga hommikul\n' +
+      '- Tasuta EL tarne puudub\n' +
+      '- Rohkem: ' + GREENEST_SUPPORT.delivery_url
+    );
   }
+  if (intent === 'support_returns') {
+    return (
+      'TAGASTUS JA GARANTII:\n' +
+      '- Tagastusõigus 14 päeva kättesaamisest\n' +
+      '- Kaup peab olema kasutamata, originaalpakendis\n' +
+      '- Tagastuse algatamiseks kirjuta 14 päeva jooksul: ' + GREENEST_SUPPORT.email + ' (nimi, toote nimi, tellimuse number)\n' +
+      '- Tagastuskulud kannab klient, v.a. defektse toote puhul\n' +
+      '- Raha tagastamine 14 päeva jooksul\n' +
+      '- Kui pakk tuli tagasi saatjale: 4 EUR kulu arvatakse tagastusest maha\n' +
+      '- Rohkem: ' + GREENEST_SUPPORT.returns_url
+    );
+  }
+  if (intent === 'support_payment') {
+    return (
+      'MAKSEVIISID:\n' +
+      '- Pangalink: Swedbank, SEB, Danske, Luminor, LHV, Coop Pank (tasu +0,25 EUR)\n' +
+      '- Pangaülekanne: saaja Nature Design OÜ\n' +
+      '  Swedbank: EE234000234545666\n' +
+      '  LHV: EE527700771005774026\n' +
+      '  Selgitusse: tellimuse number\n' +
+      '- Tellimus läheb töösse pärast 100% makse laekumist\n' +
+      '- Hinnad sisaldavad 22% käibemaksu\n' +
+      '- Rohkem: ' + GREENEST_SUPPORT.terms_url
+    );
+  }
+  if (intent === 'support_contact') {
+    return (
+      'KONTAKT:\n' +
+      '- Telefon: ' + GREENEST_SUPPORT.phone + '\n' +
+      '- E-post: ' + GREENEST_SUPPORT.email + '\n' +
+      '- Tööaeg: ' + GREENEST_SUPPORT.hours + '\n' +
+      '- Ettevõte: ' + GREENEST_SUPPORT.company + ' (reg ' + GREENEST_SUPPORT.reg_no + ', KMKR ' + GREENEST_SUPPORT.vat + ')\n' +
+      '- Aadress: ' + GREENEST_SUPPORT.address + '\n' +
+      '- Rohkem: ' + GREENEST_SUPPORT.contacts_url
+    );
+  }
+  if (intent === 'support_order') {
+    return (
+      'TELLIMUSE ABI:\n' +
+      '- Tellimuse staatuse, pakiinfo ja probleemide jaoks kirjuta: ' + GREENEST_SUPPORT.email + '\n' +
+      '- Lisa kirja tellimuse number ja probleemi kirjeldus\n' +
+      '- Telefon: ' + GREENEST_SUPPORT.phone + ' (' + GREENEST_SUPPORT.hours + ')\n' +
+      '- Tellimused lukustuvad E ja N kell 08:00 – enne seda saab tellimust muuta\n' +
+      '- Rohkem: ' + GREENEST_SUPPORT.terms_url
+    );
+  }
+  return (
+    'GREENESTI KLIENDIABI:\n' +
+    '- E-post: ' + GREENEST_SUPPORT.email + '\n' +
+    '- Telefon: ' + GREENEST_SUPPORT.phone + ' (' + GREENEST_SUPPORT.hours + ')\n' +
+    '- Saan aidata: tarne, tagastus, makse, tellimus, kontakt'
+  );
+}
 
+// Static fallback – used only when Claude is unavailable
+function buildSupportFallback_(intent) {
+  var ctx = buildFaqContext_(intent);
   return {
     mode: 'support',
-    assistantText: text,
+    assistantText: ctx,
     mainProducts: [],
     upsellProducts: [],
     vendor: VENDOR_NAME,
@@ -231,40 +256,206 @@ function buildSupportResponse_(intent) {
   };
 }
 
-function buildSmalltalkResponse_(intent) {
-  var text = '';
-  if (intent === 'greeting') {
-    text =
-      'Tere! Olen Greenesti retseptiassistent. ' +
-      'Saan aidata retseptidega ning vastata ka klienditoe küsimustele (tarne, tagastus, makse, kontakt).';
-  } else {
-    text =
-      'Selge. Kui soovid, küsi retsepti või klienditoe kohta: tarne, tagastus, makse või kontakt.';
-  }
-
+function buildSmalltalkFallback_() {
   return {
     mode: 'smalltalk',
-    assistantText: text,
+    assistantText: 'Selge. Küsi julgelt retsepti, tarne, tagastuse, makse või kontakti kohta.',
     mainProducts: [],
     upsellProducts: [],
     vendor: VENDOR_NAME,
     version: BACKEND_VERSION
   };
+}
+
+/*************************************************
+ * Claude Haiku – klienditoe ja smalltalk vastused
+ * API võti: Apps Script → Project Settings → Script Properties → ANTHROPIC_API_KEY
+ *************************************************/
+
+// Strict rules – mirrored from trenniekspert pattern
+var GREENEST_STRICT_RULES = [
+  'REEGLID, mida sa PEAD järgima:',
+  '1. Vasta AINULT allpool toodud poe teabe põhjal. Kui vastust pole teabes, ütle ausalt "Kahjuks ei oska sellele vastata. Kirjuta palun ' + GREENEST_SUPPORT.email + ' või helista ' + GREENEST_SUPPORT.phone + '."',
+  '2. Ära kunagi leiuta fakte, hindu, tähtaegu ega tingimusi, mida teabes pole.',
+  '3. Vasta eesti keeles, lühidalt (1–3 lauset), sõbralikult ja konkreetselt.',
+  '4. Ära soovita tooteid ega retsepte tekstivastuses – selleks on eraldi süsteem.',
+  '5. Kui klient on vihane või probleem on tõsine, soovita alati kirjutada ' + GREENEST_SUPPORT.email + ' või helistada ' + GREENEST_SUPPORT.phone + '.',
+  '6. Sa oled Greenesti kliendiabi assistent. Greenest (greenest.ee) on Eesti mahetoidu e-pood – müüb mahe- ja looduslikke toiduaineid.',
+  '7. Kui vastad tarne/tagastuse/makse/kontakti teemal, lisa vastuse lõppu sobiv leheviide.',
+].join('\n');
+
+var GREENEST_STORE_KNOWLEDGE = [
+  'ETTEVÕTE:',
+  '- Nimi: Greenest (' + GREENEST_SUPPORT.company + ', reg ' + GREENEST_SUPPORT.reg_no + ', KMKR ' + GREENEST_SUPPORT.vat + ')',
+  '- Aadress: ' + GREENEST_SUPPORT.address,
+  '- E-post: ' + GREENEST_SUPPORT.email,
+  '- Telefon: ' + GREENEST_SUPPORT.phone,
+  '- Lahtiolekuaeg: ' + GREENEST_SUPPORT.hours,
+  '',
+  'TARNE (rohkem: ' + GREENEST_SUPPORT.delivery_url + '):',
+  '- Pakiautomaadid (Smartpost): 4 EUR',
+  '- Tavakuller Eestis: 6 EUR',
+  '- Külmakaup Eestis: 8 EUR (üle 30 kg erihind)',
+  '- Soome: 12,99 EUR; muud EL riigid: 14,90 EUR kuni 5 kg',
+  '- Tellimused lukustuvad E ja N kell 08:00; pakk jõuab pakiautomaati laupäeval',
+  '- Pakiautomaadis 7 päeva järeletulemiseks; kuller saadab SMS-i hommikul',
+  '- Tasuta EL tarne puudub',
+  '',
+  'TAGASTUS (rohkem: ' + GREENEST_SUPPORT.returns_url + '):',
+  '- Tagastusõigus 14 päeva kättesaamisest',
+  '- Kaup peab olema kasutamata, originaalpakendis',
+  '- Kirjuta 14 päeva jooksul: ' + GREENEST_SUPPORT.email + ' (nimi, toote nimi, tellimuse number)',
+  '- Tagastuskulud kannab klient, v.a. defektse toote puhul',
+  '- Raha tagastatakse 14 päeva jooksul',
+  '- Kui pakk tuli tagasi saatjale: 4 EUR kulu arvatakse tagastusest maha',
+  '',
+  'MAKSEVIISID (rohkem: ' + GREENEST_SUPPORT.terms_url + '):',
+  '- Pangalink: Swedbank, SEB, Danske, Luminor, LHV, Coop Pank (+0,25 EUR tasu)',
+  '- Pangaülekanne: Nature Design OÜ',
+  '  Swedbank EE234000234545666 / LHV EE527700771005774026',
+  '  Selgitusse: tellimuse number',
+  '- Hinnad sisaldavad 22% käibemaksu',
+  '- Tellimus läheb töösse pärast täieliku makse laekumist',
+].join('\n');
+
+var GREENEST_SYSTEM_PROMPT_SUPPORT = [
+  'Sa oled Greenesti klienditoe vestlusassistent.',
+  '',
+  GREENEST_STRICT_RULES,
+  '',
+  'POE TEAVE:',
+  GREENEST_STORE_KNOWLEDGE,
+].join('\n');
+
+var GREENEST_SYSTEM_PROMPT_GENERAL = [
+  'Sa oled Greenesti vestlusassistent, kes aitab kliente sõbralikult.',
+  '',
+  GREENEST_STRICT_RULES,
+  '',
+  'POE TEAVE:',
+  GREENEST_STORE_KNOWLEDGE,
+].join('\n');
+
+// faqContext: optional string from buildFaqContext_() to ground Claude's answer
+function callClaudeHaiku_(userMessage, faqContext) {
+  var apiKey = getScriptProp_('ANTHROPIC_API_KEY');
+  if (!apiKey) return null;
+
+  var systemPrompt = faqContext ? GREENEST_SYSTEM_PROMPT_SUPPORT : GREENEST_SYSTEM_PROMPT_GENERAL;
+
+  var userPrompt = faqContext
+    ? ('Kliendi küsimus: ' + String(userMessage || '').trim() + '\nKontekst: ' + faqContext + '\n\nVasta 1–3 lausega ainult poe teabe põhjal. Kui kontekst sisaldab vastust, kasuta seda.')
+    : ('Kliendi sõnum: ' + String(userMessage || '').trim() + '\n\nVasta lühidalt ja kasulikult. Ära soovita tooteid ega retsepte.');
+
+  var payload = {
+    model: CLAUDE_MODEL,
+    max_tokens: 300,
+    temperature: 0,
+    system: systemPrompt,
+    messages: [{ role: 'user', content: userPrompt }]
+  };
+
+  try {
+    var response = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
+      method: 'post',
+      contentType: 'application/json',
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01'
+      },
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true
+    });
+
+    var code = response.getResponseCode();
+    var body = JSON.parse(response.getContentText());
+
+    if (code !== 200 || !body.content || !body.content.length) {
+      Logger.log('Claude API error: ' + code + ' ' + JSON.stringify(body));
+      return null;
+    }
+
+    return String(body.content[0].text || '').trim() || null;
+  } catch (err) {
+    Logger.log('callClaudeHaiku_ exception: ' + err);
+    return null;
+  }
+}
+
+// Intent classifier system prompt – returns JSON like trenniekspert
+var GREENEST_INTENT_CLASSIFIER_PROMPT = [
+  'Sa oled Greenesti vestluse intentide klassifitseerija.',
+  'Greenest on Eesti mahetoidu e-pood (toiduained, retseptid).',
+  '',
+  'Tagasta AINULT JSON objekt kujul:',
+  '{"intent":"greeting|smalltalk|escalation|support_shipping|support_returns|support_payment|support_contact|support_order|recipe|shopping","confidence":0.0-1.0}',
+  '',
+  'REEGLID:',
+  '- greeting: puhas tervitus ("tere", "hei")',
+  '- smalltalk: lühike tunnustus ("okei", "aitäh") või jutuajamine ilma küsimuseta',
+  '- escalation: vihane, pettunud, kaebuse esitamine, fraud',
+  '- support_shipping: tarne, pakk, kuller, pakiautomaat, kohaletoimetamine, "kauba kätte saamine", "millal jõuab"',
+  '- support_returns: tagastus, defekt, garantii, raha tagasi, vigane toode',
+  '- support_payment: makse, pangalink, ülekanne, arve, sooduskood',
+  '- support_contact: kontakt, telefon, e-post, tööaeg, lahtiolekuaeg',
+  '- support_order: tellimuse staatus, tellimuse number, kus mu pakk',
+  '- recipe: retsept, kuidas teha/valmistada, koostisosad, toiduvalmistamine',
+  '- shopping: toote otsimine, ostmine, soovitused, hind',
+  '- Kui kahtled support_ ja recipe/shopping vahel, eelista support_.',
+  '- Kasuta intent "recipe" ainult kui klient selgelt küsib retsepti või toiduvalmistamise kohta.',
+].join('\n');
+
+function classifyIntentWithClaude_(query) {
+  var apiKey = getScriptProp_('ANTHROPIC_API_KEY');
+  if (!apiKey) return null;
+
+  var payload = {
+    model: CLAUDE_MODEL,
+    max_tokens: 80,
+    temperature: 0,
+    system: GREENEST_INTENT_CLASSIFIER_PROMPT,
+    messages: [{ role: 'user', content: 'Sõnum: ' + String(query || '').trim() + '\n\nTagasta ainult JSON.' }]
+  };
+
+  try {
+    var response = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
+      method: 'post',
+      contentType: 'application/json',
+      headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true
+    });
+
+    var code = response.getResponseCode();
+    if (code !== 200) return null;
+
+    var body = JSON.parse(response.getContentText());
+    var text = String((body.content && body.content[0] && body.content[0].text) || '').trim();
+    var match = text.match(/\{[\s\S]*\}/);
+    if (!match) return null;
+
+    var parsed = JSON.parse(match[0]);
+    var intent = String(parsed.intent || '').trim();
+    var validIntents = ['greeting','smalltalk','escalation','support_shipping','support_returns','support_payment','support_contact','support_order','recipe','shopping'];
+    if (validIntents.indexOf(intent) === -1) return null;
+
+    return intent;
+  } catch (err) {
+    Logger.log('classifyIntentWithClaude_ error: ' + err);
+    return null;
+  }
 }
 
 function detectAssistantIntent_(query, products) {
   var q = String(query || '').toLowerCase().trim();
   if (!q) return 'smalltalk';
 
-  if (GREETING_ONLY_RE.test(q)) return 'greeting';
-  if (ACK_ONLY_RE.test(q) || SMALLTALK_RE.test(q)) return 'smalltalk';
+  // Fast regex pre-filter for obvious cases (no API call needed)
+  if (ACK_ONLY_RE.test(query)) return 'smalltalk';
+  if (GREETING_ONLY_RE.test(query)) return 'greeting';
+  if (ESCALATION_RE.test(q)) return 'escalation';
 
-  if (SUPPORT_ORDER_RE.test(q)) return 'support_order';
-  if (SUPPORT_SHIPPING_RE.test(q)) return 'support_shipping';
-  if (SUPPORT_RETURNS_RE.test(q)) return 'support_returns';
-  if (SUPPORT_PAYMENT_RE.test(q)) return 'support_payment';
-  if (SUPPORT_CONTACT_RE.test(q)) return 'support_contact';
-
+  // Fallback for product/recipe (used when Claude is unavailable)
   return decideMode_(query, products);
 }
 
@@ -1470,29 +1661,83 @@ function wrapProductForApi_(p) {
 
 function handleAssistantQuery_(query, veganOnly, glutenFreeOnly, recipeId) {
   recipeId = String(recipeId || '').trim();
-
   veganOnly = !!veganOnly;
   glutenFreeOnly = !!glutenFreeOnly;
 
+  // Direct recipe lookup – skip intent detection
   if (recipeId) {
     var catalogForRecipe = loadAiCatalog_();
     return buildRecipeResponseFromBank_(query, catalogForRecipe, veganOnly, glutenFreeOnly, recipeId);
   }
 
+  // Step 1: fast regex pre-filter (no API call) for trivial cases
   var quickIntent = detectAssistantIntent_(query, []);
-  if (quickIntent === 'greeting' || quickIntent === 'smalltalk') {
-    return buildSmalltalkResponse_(quickIntent);
-  }
-  if (String(quickIntent).indexOf('support_') === 0) {
-    return buildSupportResponse_(quickIntent);
+
+  // --- Escalation: angry/urgent → direct contact, no API call needed ---
+  if (quickIntent === 'escalation') {
+    return {
+      mode: 'support',
+      assistantText: 'Mõistan, et olukord on ebameeldiv. Palun võta otse ühendust meie klienditoega:\n- E-post: ' + GREENEST_SUPPORT.email + '\n- Telefon: ' + GREENEST_SUPPORT.phone + ' (' + GREENEST_SUPPORT.hours + ')\n\nVastame esimesel võimalusel.',
+      mainProducts: [],
+      upsellProducts: [],
+      vendor: VENDOR_NAME,
+      version: BACKEND_VERSION
+    };
   }
 
+  // --- Greeting: hardcoded, no API call needed ---
+  if (quickIntent === 'greeting') {
+    return {
+      mode: 'smalltalk',
+      assistantText: 'Tere! Olen Greenesti assistent. Saan aidata retseptidega ja vastata klienditoe küsimustele (tarne, tagastus, makse, kontakt). Kuidas saan aidata?',
+      mainProducts: [],
+      upsellProducts: [],
+      vendor: VENDOR_NAME,
+      version: BACKEND_VERSION
+    };
+  }
+
+  // Step 2: Claude classifies intent (like trenniekspert classifyIntentWithContext)
+  // Claude overrides the regex result for everything except greeting/escalation
+  var intent = classifyIntentWithClaude_(query) || quickIntent;
+
+  // --- Support intents: Claude + FAQ context (grounded answer) ---
+  if (String(intent).indexOf('support_') === 0) {
+    var faqCtx = buildFaqContext_(intent);
+    var claudeSupport = callClaudeHaiku_(query, faqCtx);
+    if (claudeSupport) {
+      return {
+        mode: 'support',
+        assistantText: claudeSupport,
+        mainProducts: [],
+        upsellProducts: [],
+        vendor: VENDOR_NAME,
+        version: BACKEND_VERSION
+      };
+    }
+    return buildSupportFallback_(intent);
+  }
+
+  // --- Smalltalk: Claude answers freely ---
+  if (intent === 'smalltalk') {
+    var claudeSmall = callClaudeHaiku_(query, null);
+    if (claudeSmall) {
+      return {
+        mode: 'smalltalk',
+        assistantText: claudeSmall,
+        mainProducts: [],
+        upsellProducts: [],
+        vendor: VENDOR_NAME,
+        version: BACKEND_VERSION
+      };
+    }
+    return buildSmalltalkFallback_();
+  }
+
+  // --- Product / recipe: load catalog and serve ---
   var catalogAll = loadAiCatalog_();
 
-  var intent = detectAssistantIntent_(query, catalogAll);
-  var mode = intent;
-
-  if (mode === 'shopping') {
+  if (intent === 'shopping') {
     var filtered = catalogAll.filter(function (p) {
       if (veganOnly && !p.diet_vegan) return false;
       if (glutenFreeOnly && !p.diet_glutenFree) return false;
@@ -1504,7 +1749,9 @@ function handleAssistantQuery_(query, veganOnly, glutenFreeOnly, recipeId) {
         mode: 'shopping',
         assistantText: 'Filtrite põhjal ei leitud ühtegi toodet. Proovi muuta filtreid.',
         mainProducts: [],
-        upsellProducts: []
+        upsellProducts: [],
+        vendor: VENDOR_NAME,
+        version: BACKEND_VERSION
       };
     }
 
