@@ -43,7 +43,7 @@ app.get("/widget/loader.js", (_req, res) => {
       hideRecipeImages: true,
       defaultServings: 2,
       enableChatLogging: true,
-      showInternalCartUI: true,
+      showInternalCartUI: false,
       cartAdapterMode: "hybrid"
     },
     existing
