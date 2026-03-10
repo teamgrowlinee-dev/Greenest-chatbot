@@ -2840,6 +2840,7 @@ function dispatchWidgetReadyEvent(widget) {
             products,
             baseServings,
             assistantText: String(data.assistantText || data.message || "").trim(),
+            ingredientMatches,
           };
         });
     }
@@ -2865,6 +2866,36 @@ function dispatchWidgetReadyEvent(widget) {
       if (!Number.isFinite(base) || base <= 0) return null;
       if (!Number.isFinite(target) || target <= 0) return null;
       return baseQty * (target / base);
+    }
+
+    formatScaledQty(qty, unit) {
+      if (!Number.isFinite(qty) || qty <= 0) return null;
+      let n;
+      if (qty >= 100) n = Math.round(qty);
+      else if (qty >= 10) n = Math.round(qty * 10) / 10;
+      else n = Math.round(qty * 100) / 100;
+      const s = String(n).replace(/\.0$/, "");
+      return unit ? s + " " + unit : s;
+    }
+
+    buildScaledAssistantText(rawText, ingredientMatches, baseServings, targetServings) {
+      if (!rawText || !ingredientMatches || !ingredientMatches.length) return rawText;
+      if (baseServings === targetServings) return rawText;
+      let text = rawText;
+      ingredientMatches.forEach((ing) => {
+        const qtyBase = Number(ing.qty_base ?? ing.qtyBase);
+        if (!Number.isFinite(qtyBase) || qtyBase <= 0) return;
+        const originalAmount = String(ing.amount || "").trim();
+        const name = String(ing.ingredientName || "").trim();
+        if (!originalAmount || !name) return;
+        const scaledQty = qtyBase * (targetServings / baseServings);
+        const scaledAmountText = this.formatScaledQty(scaledQty, String(ing.unit || "").trim());
+        if (!scaledAmountText) return;
+        const search = "- " + originalAmount + " " + name;
+        const replace = "- " + scaledAmountText + " " + name;
+        text = text.split(search).join(replace);
+      });
+      return text;
     }
 
     normalizeUnit(value) {
@@ -3059,6 +3090,8 @@ function dispatchWidgetReadyEvent(widget) {
       let previewReady = false;
       let previewCartItems = [];
       let guideCopyText = "";
+      let rawAssistantText = "";
+      let ingredientMatchesCache = [];
 
       const wrapper = document.createElement("div");
       wrapper.className = "greenest-message assistant";
@@ -3261,6 +3294,18 @@ function dispatchWidgetReadyEvent(widget) {
         servingsInput.value = String(targetServings);
         updateChipStates();
         updateProductsList();
+        if (previewReady && rawAssistantText) {
+          const scaledText = this.buildScaledAssistantText(
+            rawAssistantText,
+            ingredientMatchesCache,
+            baseServings,
+            targetServings
+          );
+          recipeGuide.innerHTML = "";
+          recipeGuide.appendChild(this.renderAssistantContent(scaledText));
+          guideCopyText = scaledText;
+          copyGuideBtn.hidden = !scaledText;
+        }
       };
 
       chips.forEach((chip) => {
@@ -3285,10 +3330,12 @@ function dispatchWidgetReadyEvent(widget) {
             previewProducts = Array.isArray(result.products) ? result.products : [];
             baseServings =
               Number(result.baseServings) || baseServings || this.defaultServings;
-            guideCopyText = String(result.assistantText || "").trim();
-            if (result.assistantText) {
+            rawAssistantText = String(result.assistantText || "").trim();
+            ingredientMatchesCache = Array.isArray(result.ingredientMatches) ? result.ingredientMatches : [];
+            guideCopyText = rawAssistantText;
+            if (rawAssistantText) {
               recipeGuide.innerHTML = "";
-              recipeGuide.appendChild(this.renderAssistantContent(result.assistantText));
+              recipeGuide.appendChild(this.renderAssistantContent(rawAssistantText));
             }
             copyGuideBtn.hidden = !guideCopyText;
             previewReady = true;
