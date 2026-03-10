@@ -51,7 +51,7 @@ const STR = {
     preview_retry: "Proovi uuesti",
     confirm_title: "Valitud retsept: {name}",
     confirm_products_note:
-      "NB! Need ei ole ainukesed tooted mida vaja laheb vaata juhendit ja saad rohkem teada!",
+      "NB! Need ei ole ainukesed tooted mida vaja läheb.",
     confirm_copy_guide_btn: "Kopeeri juhendi tekst",
     confirm_copy_done: "Juhend kopeeritud",
     confirm_copy_failed: "Kopeerimine ebaõnnestus",
@@ -3173,8 +3173,17 @@ function dispatchWidgetReadyEvent(widget) {
       cancelBtn.className = "greenest-confirm-secondary";
       cancelBtn.textContent = t("confirm_cancel_btn");
 
+      const guideBtn = document.createElement("button");
+      guideBtn.type = "button";
+      guideBtn.className = "greenest-confirm-secondary";
+      guideBtn.textContent = "Vaata juhendit";
+      guideBtn.addEventListener("click", () => {
+        recipeGuide.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      });
+
       actions.appendChild(confirmBtn);
       actions.appendChild(cancelBtn);
+      actions.appendChild(guideBtn);
       bubble.appendChild(actions);
       wrapper.appendChild(bubble);
       this.messagesEl.appendChild(wrapper);
