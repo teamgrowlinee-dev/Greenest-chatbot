@@ -2980,6 +2980,7 @@ function dispatchWidgetReadyEvent(widget) {
           targetServings
         );
         let cartUnits = this.computeCartUnits(needed, unit, packSize, packUnit);
+        const hasPreciseUnits = cartUnits !== null;
         if (cartUnits === null && needed !== null) {
           cartUnits = this.computeFallbackCartUnits(
             needed,
@@ -2990,10 +2991,22 @@ function dispatchWidgetReadyEvent(widget) {
         }
         cartUnits = this.clampRecipeCartUnits(cartUnits);
         const price = Number(product.price || product.unit_price || 0);
-        const alreadyInCart = id
-          ? Number((this.cart.items.find((i) => i.id === id) || {}).qty || 0)
-          : 0;
-        const qtyToAdd = cartUnits !== null ? Math.max(0, cartUnits - alreadyInCart) : null;
+        const productSku = String(product.sku || product.product_sku || "").trim();
+        const cartItemsList = this.cart && Array.isArray(this.cart.items) ? this.cart.items : [];
+        const cartItem =
+          (id && cartItemsList.find((i) => i.id === id)) ||
+          (productSku && cartItemsList.find((i) => i.sku && i.sku === productSku)) ||
+          null;
+        const alreadyInCart = Number((cartItem || {}).qty || 0);
+        // When pack_size is unknown and unit is weight/volume, we can't reliably
+        // compare cartUnits (serving-ratio fallback) against alreadyInCart (packs).
+        // If the user already has the item in cart, treat it as covered.
+        const qtyToAdd =
+          !hasPreciseUnits && !this.isPieceLikeUnit(unit) && alreadyInCart > 0
+            ? 0
+            : cartUnits !== null
+            ? Math.max(0, cartUnits - alreadyInCart)
+            : null;
         return {
           id,
           product_id: String(product.product_id || product.productId || id).trim() || id,
@@ -3002,6 +3015,7 @@ function dispatchWidgetReadyEvent(widget) {
           needed,
           unit,
           cart_units: cartUnits,
+          has_precise_units: hasPreciseUnits,
           already_in_cart: alreadyInCart,
           qty_to_add: qtyToAdd,
           price: Number.isFinite(price) ? price : 0,
