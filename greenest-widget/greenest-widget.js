@@ -534,6 +534,7 @@ const CART_BANNER_LAST_SEEN_KEY = "gw_last_seen_cart_sig";
 const CART_BANNER_DISMISSED_KEY = "gw_dismissed_cart_sig";
 const CART_BANNER_COOLDOWN_KEY = "gw_banner_cooldown_until";
 const CART_BANNER_COOLDOWN_MS = 10000;
+const EXTERNAL_CART_SYNC_INTERVAL_MS = 2500;
 
 function makeCartSignature(items) {
   if (!Array.isArray(items) || !items.length) return "";
@@ -544,6 +545,22 @@ function makeCartSignature(items) {
       const qty = Number(item.qty || 0);
       if (!id || !Number.isFinite(qty) || qty <= 0) return null;
       return id;
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b));
+  if (!normalized.length) return "";
+  return normalized.join("|");
+}
+
+function makeCartSnapshotSignature(items) {
+  if (!Array.isArray(items) || !items.length) return "";
+  const normalized = items
+    .map((item) => {
+      if (!item) return null;
+      const id = String(pickGreenestProductId(item) || "").trim();
+      const qty = Number(item.qty || item.quantity || 0);
+      if (!id || !Number.isFinite(qty) || qty <= 0) return null;
+      return `${id}:${Math.round(qty)}`;
     })
     .filter(Boolean)
     .sort((a, b) => a.localeCompare(b));
@@ -660,6 +677,9 @@ function attachCartAdapterToWidget(widget, adapter, mode, options = {}) {
     widget.cartAdapter !== adapter || widget.cartAdapterMode !== nextMode;
   widget.cartAdapter = adapter;
   widget.cartAdapterMode = nextMode;
+  if (typeof widget.startExternalCartSync === "function") {
+    widget.startExternalCartSync();
+  }
   if (
     options.hydrate !== false &&
     (changed || widget.externalCartHydrated !== true || options.forceHydrate === true)
@@ -671,6 +691,12 @@ function attachCartAdapterToWidget(widget, adapter, mode, options = {}) {
 
 function syncRuntimeCartAdapter(widget, options = {}) {
   const runtimeState = resolveRuntimeCartAdapterState();
+  if (!isObject(runtimeState.adapter)) {
+    if (widget && typeof widget.stopExternalCartSync === "function") {
+      widget.stopExternalCartSync();
+    }
+    return false;
+  }
   return attachCartAdapterToWidget(
     widget,
     runtimeState.adapter,
@@ -976,6 +1002,9 @@ function dispatchWidgetReadyEvent(widget) {
       this.greetingSequenceTimer = null;
       this.greetingLoopTimer = null;
       this.externalCartHydrated = false;
+      this.externalCartSyncTimer = 0;
+      this.externalCartSyncInFlight = false;
+      this.boundHandleVisibilityChange = this.handleVisibilityChange.bind(this);
     }
 
     init() {
@@ -999,11 +1028,13 @@ function dispatchWidgetReadyEvent(widget) {
         startRuntimeCartAdapterPolling(this);
       }
       this.loadExternalCartSnapshot();
+      this.startExternalCartSync();
       this.startLauncherNudge();
       this.fetchRecipes();
       this.initDebugHooks();
       this.trackEvent("widget_loaded", { assisted: 0, reason: "auto" });
       document.addEventListener("keydown", this.boundHandleKeyDown);
+      document.addEventListener("visibilitychange", this.boundHandleVisibilityChange);
     }
 
     render() {
@@ -2310,6 +2341,8 @@ function dispatchWidgetReadyEvent(widget) {
     initPublicApi() {
       window.GREENEST_WIDGET_API = window.GREENEST_WIDGET_API || {};
       window.GREENEST_WIDGET_API.getInstance = () => this;
+      window.GREENEST_WIDGET_API.syncExternalCart = () =>
+        this.loadExternalCartSnapshot("public_api_sync", { forceRefresh: true });
       window.GREENEST_WIDGET_API.setCartAdapter = (adapter, mode) => {
         if (!isObject(adapter)) return false;
         const config = getRuntimeWidgetConfig();
@@ -3388,50 +3421,115 @@ function dispatchWidgetReadyEvent(widget) {
       return [];
     }
 
-    applyExternalCartSnapshot(items, reason) {
+    hasExternalCartSnapshotMethod() {
+      return Boolean(
+        this.getCartAdapterMethod([
+          "getCartItems",
+          "listItems",
+          "getItems",
+          "listCartItems",
+        ])
+      );
+    }
+
+    startExternalCartSync() {
+      if (this.externalCartSyncTimer || !this.hasExternalCartSnapshotMethod()) return;
+      this.externalCartSyncTimer = window.setInterval(() => {
+        if (document.visibilityState === "hidden") return;
+        this.loadExternalCartSnapshot("adapter_poll");
+      }, EXTERNAL_CART_SYNC_INTERVAL_MS);
+    }
+
+    stopExternalCartSync() {
+      if (!this.externalCartSyncTimer) return;
+      window.clearInterval(this.externalCartSyncTimer);
+      this.externalCartSyncTimer = 0;
+    }
+
+    handleVisibilityChange() {
+      if (document.visibilityState !== "visible") return;
+      this.loadExternalCartSnapshot("adapter_visibility");
+    }
+
+    applyExternalCartSnapshot(items, reason, options = {}) {
       const normalized = this.normalizeCartItemsForWidget(items);
+      const prevItems =
+        this.cart && Array.isArray(this.cart.items) ? this.cart.items : [];
+      const prevSig = makeCartSnapshotSignature(prevItems);
+      const nextSig = makeCartSnapshotSignature(normalized);
+      const changed = nextSig !== prevSig;
+      if (!changed && this.externalCartHydrated === true && options.forceRefresh !== true) {
+        return false;
+      }
       this.cart = { items: normalized };
       if (this.showInternalCartUI) {
         this.saveCart();
       }
       this.updateCartUI();
       this.externalCartHydrated = true;
+      if (!changed && options.forceRefresh !== true) {
+        return false;
+      }
       this.refreshCartRecipeCandidates()
         .then(() => this.maybeShowCartBanner(reason || "adapter_sync", { ignoreCooldown: true }))
         .catch(() => {
           /* ignore */
         });
+      return true;
     }
 
-    loadExternalCartSnapshot() {
-      if (!this.cartAdapter) return;
+    loadExternalCartSnapshot(reason = "adapter_hydrate", options = {}) {
+      if (!this.cartAdapter) return Promise.resolve(false);
+      if (!this.hasExternalCartSnapshotMethod()) {
+        this.stopExternalCartSync();
+        return Promise.resolve(false);
+      }
+      if (this.externalCartSyncInFlight) {
+        return Promise.resolve(false);
+      }
       const method = this.getCartAdapterMethod([
         "getCartItems",
         "listItems",
         "getItems",
         "listCartItems",
       ]);
-      if (!method) return;
+      if (!method) {
+        this.stopExternalCartSync();
+        return Promise.resolve(false);
+      }
 
       const context = this.buildCartAdapterContext("load_cart_snapshot", {
         itemCount: this.cart.items.length,
+        reason: String(reason || "adapter_hydrate"),
       });
+      const applySnapshot = (payload) => {
+        const items = this.extractCartItemsFromAdapterResult(payload);
+        return this.applyExternalCartSnapshot(items, reason, options);
+      };
+      this.externalCartSyncInFlight = true;
 
       try {
         const result = method.fn(context, context);
         if (result && typeof result.then === "function") {
-          result
+          return result
             .then((payload) => {
-              const items = this.extractCartItemsFromAdapterResult(payload);
-              this.applyExternalCartSnapshot(items, "adapter_hydrate");
+              return applySnapshot(payload);
             })
-            .catch((error) => this.reportCartAdapterError("get_cart_items", error));
-          return;
+            .catch((error) => {
+              this.reportCartAdapterError("get_cart_items", error);
+              return false;
+            })
+            .finally(() => {
+              this.externalCartSyncInFlight = false;
+            });
         }
-        const items = this.extractCartItemsFromAdapterResult(result);
-        this.applyExternalCartSnapshot(items, "adapter_hydrate");
+        const applied = applySnapshot(result);
+        this.externalCartSyncInFlight = false;
+        return Promise.resolve(applied);
       } catch (error) {
         this.reportCartAdapterError("get_cart_items", error);
+        this.externalCartSyncInFlight = false;
+        return Promise.resolve(false);
       }
     }
 
