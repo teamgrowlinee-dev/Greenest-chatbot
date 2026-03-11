@@ -879,7 +879,51 @@
 .greenest-recipes-trigger-row {
   padding: 0 24px 10px;
   display: flex;
+  gap: 8px;
   justify-content: flex-end;
+}
+
+.greenest-tracking-panel {
+  padding: 0 24px 10px;
+}
+
+.greenest-tracking-form {
+  display: flex;
+  gap: 8px;
+}
+
+.greenest-tracking-input {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--greenest-border);
+  border-radius: 8px;
+  color: var(--greenest-text);
+  padding: 7px 12px;
+  font-size: 0.82rem;
+  outline: none;
+}
+
+.greenest-tracking-input::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.greenest-tracking-input:focus {
+  border-color: var(--greenest-accent);
+}
+
+.greenest-tracking-submit {
+  background: var(--greenest-accent);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 7px 14px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.greenest-tracking-submit:hover {
+  opacity: 0.88;
 }
 
 .greenest-recipes-trigger {
