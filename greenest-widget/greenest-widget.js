@@ -2282,7 +2282,7 @@ function dispatchWidgetReadyEvent(widget) {
     renderAssistantContent(rawText) {
       const parsed = this.parseAssistantText(rawText || "");
       const hasStructure =
-        parsed.title || parsed.ingredients.length || parsed.steps.length || parsed.extras.length;
+        parsed.ingredients.length || parsed.steps.length || parsed.extras.length;
 
       if (!hasStructure) {
         const fallback = document.createElement("div");
