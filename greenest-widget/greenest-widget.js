@@ -2404,10 +2404,11 @@ function dispatchWidgetReadyEvent(widget) {
 
     escapeAndFormat(text) {
       const escaped = this.escapeHtml(text);
-      const linked = escaped.replace(
-        /https?:\/\/[^\s<>"]+/g,
-        (url) => `<a href="${url}" target="_blank" rel="noopener noreferrer" class="greenest-link">${url}</a>`
-      );
+      const linked = escaped
+        .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+        .replace(/https?:\/\/[^\s<>"]+/g,
+          (url) => `<a href="${url}" target="_blank" rel="noopener noreferrer" class="greenest-link">${url}</a>`
+        );
       return linked.replace(/\n/g, "<br/>");
     }
 

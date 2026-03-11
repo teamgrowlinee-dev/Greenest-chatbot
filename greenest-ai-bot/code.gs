@@ -174,67 +174,28 @@ function isOriginAllowed_(origin) {
   return false;
 }
 
-// Per-intent FAQ context – passed to Claude as grounding context (like trenniekspert answer_faq)
-function buildFaqContext_(intent) {
+// Lühike sõbralik vastus + link – ei kasuta Claudet, kiire ja täpne
+function buildSupportLinkResponse_(intent) {
   if (intent === 'support_shipping') {
-    return (
-      'TARNEINFO:\n' +
-      '- Pakiautomaadid (Smartpost): 4 EUR\n' +
-      '- Tavakuller Eestis: 6 EUR\n' +
-      '- Külmakaup Eestis: 8 EUR (üle 30 kg erihind)\n' +
-      '- Soome: 12,99 EUR; muud EL riigid: 14,90 EUR (kuni 5 kg)\n' +
-      '- Tellimused lukustuvad E ja N kell 08:00; pakk jõuab pakiautomaati laupäeval\n' +
-      '- Pakiautomaadis 7 päeva; kuller SMS-iga hommikul\n' +
-      '- Tasuta EL tarne puudub\n' +
-      '- Rohkem: ' + GREENEST_SUPPORT.delivery_url
-    );
+    return 'Kogu tarneinfo leiad siit 😊\n' + GREENEST_SUPPORT.delivery_url;
   }
   if (intent === 'support_returns') {
-    return (
-      'TAGASTUS JA GARANTII:\n' +
-      '- Tagastusõigus 14 päeva kättesaamisest\n' +
-      '- Kaup peab olema kasutamata, originaalpakendis\n' +
-      '- Tagastuse algatamiseks kirjuta 14 päeva jooksul: ' + GREENEST_SUPPORT.email + ' (nimi, toote nimi, tellimuse number)\n' +
-      '- Tagastuskulud kannab klient, v.a. defektse toote puhul\n' +
-      '- Raha tagastamine 14 päeva jooksul\n' +
-      '- Kui pakk tuli tagasi saatjale: 4 EUR kulu arvatakse tagastusest maha\n' +
-      '- Rohkem: ' + GREENEST_SUPPORT.returns_url
-    );
+    return 'Tagastusinfo leiad siit 😊\n' + GREENEST_SUPPORT.returns_url;
   }
   if (intent === 'support_payment') {
-    return (
-      'MAKSEVIISID:\n' +
-      '- Pangalink: Swedbank, SEB, Danske, Luminor, LHV, Coop Pank (tasu +0,25 EUR)\n' +
-      '- Pangaülekanne: saaja Nature Design OÜ\n' +
-      '  Swedbank: EE234000234545666\n' +
-      '  LHV: EE527700771005774026\n' +
-      '  Selgitusse: tellimuse number\n' +
-      '- Tellimus läheb töösse pärast 100% makse laekumist\n' +
-      '- Hinnad sisaldavad 22% käibemaksu\n' +
-      '- Rohkem: ' + GREENEST_SUPPORT.terms_url
-    );
+    return 'Maksetingimused ja pangaülekande andmed leiad siit 😊\n' + GREENEST_SUPPORT.terms_url;
   }
   if (intent === 'support_contact') {
-    return (
-      'KONTAKT:\n' +
-      '- Telefon: ' + GREENEST_SUPPORT.phone + '\n' +
-      '- E-post: ' + GREENEST_SUPPORT.email + '\n' +
-      '- Tööaeg: ' + GREENEST_SUPPORT.hours + '\n' +
-      '- Ettevõte: ' + GREENEST_SUPPORT.company + ' (reg ' + GREENEST_SUPPORT.reg_no + ', KMKR ' + GREENEST_SUPPORT.vat + ')\n' +
-      '- Aadress: ' + GREENEST_SUPPORT.address + '\n' +
-      '- Rohkem: ' + GREENEST_SUPPORT.contacts_url
-    );
+    return 'Kontaktandmed ja lahtiolekuajad leiad siit 😊\n' + GREENEST_SUPPORT.contacts_url;
   }
   if (intent === 'support_order') {
-    return (
-      'TELLIMUSE ABI:\n' +
-      '- Tellimuse staatuse, pakiinfo ja probleemide jaoks kirjuta: ' + GREENEST_SUPPORT.email + '\n' +
-      '- Lisa kirja tellimuse number ja probleemi kirjeldus\n' +
-      '- Telefon: ' + GREENEST_SUPPORT.phone + ' (' + GREENEST_SUPPORT.hours + ')\n' +
-      '- Tellimused lukustuvad E ja N kell 08:00 – enne seda saab tellimust muuta\n' +
-      '- Rohkem: ' + GREENEST_SUPPORT.terms_url
-    );
+    return 'Tellimuse tingimused ja pakiinfo leiad siit 😊\n' + GREENEST_SUPPORT.terms_url;
   }
+  return 'Klienditugi leiad siit 😊\n' + GREENEST_SUPPORT.contacts_url;
+}
+
+// Per-intent FAQ context – kasutatakse ainult escalation juhtudel
+function buildFaqContext_(intent) {
   return (
     'GREENESTI KLIENDIABI:\n' +
     '- E-post: ' + GREENEST_SUPPORT.email + '\n' +
@@ -1701,21 +1662,16 @@ function handleAssistantQuery_(query, veganOnly, glutenFreeOnly, recipeId) {
   // Claude overrides the regex result for everything except greeting/escalation
   var intent = classifyIntentWithClaude_(query) || quickIntent;
 
-  // --- Support intents: Claude + FAQ context (grounded answer) ---
+  // --- Support intents: lühike tekst + link (ei kasuta Claudet) ---
   if (String(intent).indexOf('support_') === 0) {
-    var faqCtx = buildFaqContext_(intent);
-    var claudeSupport = callClaudeHaiku_(query, faqCtx);
-    if (claudeSupport) {
-      return {
-        mode: 'support',
-        assistantText: claudeSupport,
-        mainProducts: [],
-        upsellProducts: [],
-        vendor: VENDOR_NAME,
-        version: BACKEND_VERSION
-      };
-    }
-    return buildSupportFallback_(intent);
+    return {
+      mode: 'support',
+      assistantText: buildSupportLinkResponse_(intent),
+      mainProducts: [],
+      upsellProducts: [],
+      vendor: VENDOR_NAME,
+      version: BACKEND_VERSION
+    };
   }
 
   // --- Smalltalk: Claude answers freely ---
