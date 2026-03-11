@@ -2406,6 +2406,9 @@ function dispatchWidgetReadyEvent(widget) {
       const escaped = this.escapeHtml(text);
       const linked = escaped
         .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+        .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g,
+          (_, label, url) => `<a href="${url}" target="_blank" rel="noopener noreferrer" class="greenest-link greenest-link-btn">${label}</a>`
+        )
         .replace(/https?:\/\/[^\s<>"]+/g,
           (url) => `<a href="${url}" target="_blank" rel="noopener noreferrer" class="greenest-link">${url}</a>`
         );

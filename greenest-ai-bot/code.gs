@@ -174,24 +174,24 @@ function isOriginAllowed_(origin) {
   return false;
 }
 
-// Lühike sõbralik vastus + link – ei kasuta Claudet, kiire ja täpne
+// Lühike sõbralik vastus + klõpsatav link
 function buildSupportLinkResponse_(intent) {
   if (intent === 'support_shipping') {
-    return 'Kogu tarneinfo leiad siit 😊\n' + GREENEST_SUPPORT.delivery_url;
+    return 'Kogu tarneinfo leiad siit 😊\n[Ava tarneinfo](' + GREENEST_SUPPORT.delivery_url + ')';
   }
   if (intent === 'support_returns') {
-    return 'Tagastusinfo leiad siit 😊\n' + GREENEST_SUPPORT.returns_url;
+    return 'Tagastusinfo leiad siit 😊\n[Ava tagastusinfo](' + GREENEST_SUPPORT.returns_url + ')';
   }
   if (intent === 'support_payment') {
-    return 'Maksetingimused ja pangaülekande andmed leiad siit 😊\n' + GREENEST_SUPPORT.terms_url;
+    return 'Maksetingimused leiad siit 😊\n[Ava tellimistingimused](' + GREENEST_SUPPORT.terms_url + ')';
   }
   if (intent === 'support_contact') {
-    return 'Kontaktandmed ja lahtiolekuajad leiad siit 😊\n' + GREENEST_SUPPORT.contacts_url;
+    return 'Kontaktandmed leiad siit 😊\n[Ava kontaktleht](' + GREENEST_SUPPORT.contacts_url + ')';
   }
   if (intent === 'support_order') {
-    return 'Tellimuse tingimused ja pakiinfo leiad siit 😊\n' + GREENEST_SUPPORT.terms_url;
+    return 'Tellimuse info leiad siit 😊\n[Ava tellimistingimused](' + GREENEST_SUPPORT.terms_url + ')';
   }
-  return 'Klienditugi leiad siit 😊\n' + GREENEST_SUPPORT.contacts_url;
+  return 'Kliendiabi info leiad siit 😊\n[Ava kontaktleht](' + GREENEST_SUPPORT.contacts_url + ')';
 }
 
 // Per-intent FAQ context – kasutatakse ainult escalation juhtudel
