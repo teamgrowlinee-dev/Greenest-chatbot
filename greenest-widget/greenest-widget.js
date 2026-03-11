@@ -2409,7 +2409,7 @@ function dispatchWidgetReadyEvent(widget) {
         .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g,
           (_, label, url) => `<a href="${url}" target="_blank" rel="noopener noreferrer" class="greenest-link greenest-link-btn">${label}</a>`
         )
-        .replace(/https?:\/\/[^\s<>"]+/g,
+        .replace(/(?<![="'])(https?:\/\/[^\s<>"]+)/g,
           (url) => `<a href="${url}" target="_blank" rel="noopener noreferrer" class="greenest-link">${url}</a>`
         );
       return linked.replace(/\n/g, "<br/>");
