@@ -8,6 +8,6 @@ services:
     startCommand: cd server && node index.js
     envVars:
       - key: APPS_SCRIPT_URL
-        value: https://script.google.com/macros/s/AKfycbyNO5s4BNdzwV2LG7Rfi_8o18nc5EDYNICf_bctMQTrO7JvhFbR64rTlOpviZ4XoB3S/exec
+        value: https://script.google.com/macros/s/AKfycbxyHpFFfz90pFYs4tVd5VVCYONiZ269ahqFiV1LRc4756WVx-1JUg3vmD9t2uKmvYY0/exec
       - key: SITE_TOKEN
         value: greenest_live_9f3a7c1d8e24b5c0a91f6e2b47d8a3c1

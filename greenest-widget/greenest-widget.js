@@ -92,7 +92,7 @@ const STR = {
 
 const ACTIVE_LOCALE = "et";
 const DEFAULT_WEBAPP_URL =
-  "https://script.google.com/macros/s/AKfycbyNO5s4BNdzwV2LG7Rfi_8o18nc5EDYNICf_bctMQTrO7JvhFbR64rTlOpviZ4XoB3S/exec";
+  "https://script.google.com/macros/s/AKfycbxyHpFFfz90pFYs4tVd5VVCYONiZ269ahqFiV1LRc4756WVx-1JUg3vmD9t2uKmvYY0/exec";
 const DEFAULT_SITE_TOKEN = "REPLACE_WITH_GREENEST_SITE_TOKEN";
 const DEFAULT_VENDOR = "growlinee";
 const DEFAULT_WIDGET_VERSION = "v4.5";
