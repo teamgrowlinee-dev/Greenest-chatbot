@@ -1892,3 +1892,12 @@
     max-width: calc(100vw - 28px);
   }
 }
+
+.greenest-link {
+  color: #5ecf8a;
+  text-decoration: underline;
+  word-break: break-all;
+}
+.greenest-link:hover {
+  opacity: 0.8;
+}

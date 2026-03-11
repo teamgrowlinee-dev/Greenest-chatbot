@@ -2403,7 +2403,12 @@ function dispatchWidgetReadyEvent(widget) {
     }
 
     escapeAndFormat(text) {
-      return this.escapeHtml(text).replace(/\n/g, "<br/>");
+      const escaped = this.escapeHtml(text);
+      const linked = escaped.replace(
+        /https?:\/\/[^\s<>"]+/g,
+        (url) => `<a href="${url}" target="_blank" rel="noopener noreferrer" class="greenest-link">${url}</a>`
+      );
+      return linked.replace(/\n/g, "<br/>");
     }
 
     escapeHtml(str) {
