@@ -1833,149 +1833,6 @@ function buildCartRecipeCandidates_(productIds, limit) {
 }
 
 /*************************************************
- * Smartpost pakijälgimine
- *************************************************/
-function fetchSmartpostTracking_(trackingCode) {
-  var url = 'https://www.smartpost.ee/track?c=' + encodeURIComponent(String(trackingCode || '').trim());
-  var response = UrlFetchApp.fetch(url, {
-    method: 'get',
-    muteHttpExceptions: true,
-    followRedirects: true,
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36',
-      'Accept': 'text/html,application/xhtml+xml',
-      'Accept-Language': 'et-EE,et;q=0.9,en;q=0.8'
-    }
-  });
-  if (response.getResponseCode() !== 200) return null;
-  return response.getContentText();
-}
-
-function extractTrackingText_(html) {
-  if (!html) return null;
-  var clean = html
-    .replace(/<script[\s\S]*?<\/script>/gi, '')
-    .replace(/<style[\s\S]*?<\/style>/gi, '')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/\s{2,}/g, ' ')
-    .trim();
-
-  // Otsi tracking-relevantset sektsiooni
-  var idx = clean.search(/saatmine|tracking|pakk|parcel|status|staatus|delivered|tarnitud|väljastatud|saadetis|liikumine|event/i);
-  if (idx > 0) {
-    var start = Math.max(0, idx - 100);
-    return clean.slice(start, start + 3000);
-  }
-  return clean.slice(0, 3000);
-}
-
-function summarizeTrackingWithClaude_(trackingCode, extractedText) {
-  var apiKey = getScriptProp_('ANTHROPIC_API_KEY');
-  if (!apiKey) return null;
-
-  var prompt = [
-    'Siin on Smartposti jälgimislehe tekst paki koodiga "' + trackingCode + '":',
-    '',
-    String(extractedText || '').slice(0, 3000),
-    '',
-    'Tee lühike eestikeelne kokkuvõte (2–4 lauset): mis on pakisaadetise hetkestaatus, asukoht ja hinnanguline tarneaeg.',
-    'Kui tekstist ei leia pakiinfot, ütle: "Selle koodiga pakki ei leitud Smartpostist. Kontrolli koodi ja proovi uuesti."'
-  ].join('\n');
-
-  var payload = {
-    model: CLAUDE_MODEL,
-    max_tokens: 300,
-    temperature: 0,
-    system: 'Sa oled Greenesti klienditoe assistent. Vasta lühidalt eesti keeles. Kokkuvõte peab olema konkreetne ja kasulik.',
-    messages: [{ role: 'user', content: prompt }]
-  };
-
-  try {
-    var res = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
-      method: 'post',
-      contentType: 'application/json',
-      headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-      payload: JSON.stringify(payload),
-      muteHttpExceptions: true
-    });
-    if (res.getResponseCode() !== 200) return null;
-    var body = JSON.parse(res.getContentText());
-    if (!body.content || !body.content.length) return null;
-    return String(body.content[0].text || '').trim() || null;
-  } catch (err) {
-    Logger.log('summarizeTrackingWithClaude_ error: ' + err);
-    return null;
-  }
-}
-
-function handleTrackParcel_(trackingCode) {
-  var code = String(trackingCode || '').trim().toUpperCase().replace(/\s+/g, '');
-
-  if (!code) {
-    return { ok: false, mode: 'tracking', assistantText: 'Palun sisesta pakikood.' };
-  }
-
-  if (code.length < 5) {
-    return {
-      ok: true,
-      mode: 'tracking',
-      assistantText: 'Pakikood "' + code + '" tundub liiga lühike. Smartposti pakikood on tavaliselt 13–20 tähemärki (nt EE123456789EE). Kontrolli tellimuskinnituse e-kirjast.'
-    };
-  }
-
-  try {
-    var html = fetchSmartpostTracking_(code);
-    var trackUrl = 'https://www.smartpost.ee/track?c=' + encodeURIComponent(code);
-
-    if (!html) {
-      return {
-        ok: true,
-        mode: 'tracking',
-        trackingCode: code,
-        trackingUrl: trackUrl,
-        assistantText: 'Kahjuks ei saanud Smartpostiga ühendust võtta. Jälgi pakki otse:\n' + trackUrl + '\n\nKui abi vaja: ' + GREENEST_SUPPORT.phone + ' (' + GREENEST_SUPPORT.hours + ')',
-        vendor: VENDOR_NAME,
-        version: BACKEND_VERSION
-      };
-    }
-
-    var extractedText = extractTrackingText_(html);
-    var summary = summarizeTrackingWithClaude_(code, extractedText);
-
-    var text = summary
-      ? (summary + '\n\nOtselink: ' + trackUrl)
-      : ('Pakikoodi ' + code + ' saad jälgida otse Smartposti lehel:\n' + trackUrl);
-
-    return {
-      ok: true,
-      mode: 'tracking',
-      trackingCode: code,
-      trackingUrl: trackUrl,
-      assistantText: text,
-      vendor: VENDOR_NAME,
-      version: BACKEND_VERSION
-    };
-
-  } catch (err) {
-    Logger.log('handleTrackParcel_ error: ' + err);
-    var fallbackUrl = 'https://www.smartpost.ee/track?c=' + encodeURIComponent(code);
-    return {
-      ok: true,
-      mode: 'tracking',
-      trackingCode: code,
-      trackingUrl: fallbackUrl,
-      assistantText: 'Pakiinfo laadimisel tekkis viga. Jälgi pakki otse:\n' + fallbackUrl,
-      vendor: VENDOR_NAME,
-      version: BACKEND_VERSION
-    };
-  }
-}
-
-/*************************************************
  * API
  *************************************************/
 function jsonResponse_(obj) {
@@ -2010,12 +1867,6 @@ function doPost(e) {
       };
       validateTrackingAuth_(payload, chatMeta);
       return jsonResponse_(logChatMessage_(payload, chatMeta));
-    }
-
-    // ---- PAKIJÄLGIMINE ----
-    if (action === 'trackparcel' || action === 'track_parcel') {
-      var trackCode = String(payload.tracking_code || payload.trackingCode || payload.code || '').trim();
-      return jsonResponse_(handleTrackParcel_(trackCode));
     }
 
     // ---- ASSISTANT ----
@@ -2096,11 +1947,6 @@ function doGet(e) {
 
     if (action === 'stats') {
       return jsonResponse_(buildStats_(params.days || 7));
-    }
-
-    if (action === 'trackparcel' || action === 'track_parcel') {
-      var trackCode = String(params.tracking_code || params.trackingCode || params.code || '').trim();
-      return jsonResponse_(handleTrackParcel_(trackCode));
     }
 
     if (action === 'track' || action === 'trackevent') {

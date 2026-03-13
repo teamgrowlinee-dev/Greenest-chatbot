@@ -40,11 +40,6 @@ const STR = {
       "Selles režiimis on üksikute toodete otsing piiratud. Retseptid ja klienditugi (tarne/tagastus/makse/kontakt) on saadaval.",
     recipes_open: "Ava retseptid",
     recipes_close: "Sulge retseptid",
-    tracking_open: "Jälgi pakki",
-    tracking_placeholder: "Sisesta pakikood (nt EE123456789EE)...",
-    tracking_submit: "Jälgi",
-    tracking_loading: "Otsin pakki...",
-    tracking_error: "Pakiinfo päring ebaõnnestus.",
     recipes_title: "Retseptid",
     recipes_search_placeholder: "Otsi retsepti...",
     recipes_loading: "Laen retsepte...",
@@ -966,10 +961,6 @@ function dispatchWidgetReadyEvent(widget) {
       this.recipesTriggerBtn = null;
       this.recipesTriggerRow = null;
       this.recipeDrawer = null;
-      this.trackingBtn = null;
-      this.trackingPanel = null;
-      this.trackingInput = null;
-      this.trackingPanelOpen = false;
       this.recipeDrawerStatus = null;
       this.recipeSearchInput = null;
       this.recipeListEl = null;
@@ -1183,48 +1174,7 @@ function dispatchWidgetReadyEvent(widget) {
       this.recipesTriggerBtn = recipesTrigger;
       recipesTriggerRow.appendChild(recipesTrigger);
 
-      const trackingBtn = document.createElement("button");
-      trackingBtn.type = "button";
-      trackingBtn.className = "greenest-recipes-trigger greenest-tracking-btn";
-      trackingBtn.textContent = t("tracking_open");
-      trackingBtn.addEventListener("click", () => this.toggleTrackingPanel());
-      this.trackingBtn = trackingBtn;
-      recipesTriggerRow.appendChild(trackingBtn);
-
       panel.appendChild(recipesTriggerRow);
-
-      // Tracking panel (hidden by default)
-      const trackingPanel = document.createElement("div");
-      trackingPanel.className = "greenest-tracking-panel";
-      trackingPanel.hidden = true;
-      this.trackingPanel = trackingPanel;
-
-      const trackingForm = document.createElement("form");
-      trackingForm.className = "greenest-tracking-form";
-      const trackingInput = document.createElement("input");
-      trackingInput.type = "text";
-      trackingInput.className = "greenest-tracking-input";
-      trackingInput.placeholder = t("tracking_placeholder");
-      trackingInput.autocomplete = "off";
-      trackingInput.spellcheck = false;
-      this.trackingInput = trackingInput;
-
-      const trackingSubmit = document.createElement("button");
-      trackingSubmit.type = "submit";
-      trackingSubmit.className = "greenest-tracking-submit";
-      trackingSubmit.textContent = t("tracking_submit");
-
-      trackingForm.appendChild(trackingInput);
-      trackingForm.appendChild(trackingSubmit);
-      trackingForm.addEventListener("submit", (e) => {
-        e.preventDefault();
-        const code = (this.trackingInput.value || "").trim();
-        if (!code) return;
-        this.setTrackingPanelOpen(false);
-        this.fetchTracking(code);
-      });
-      trackingPanel.appendChild(trackingForm);
-      panel.appendChild(trackingPanel);
 
       const filters = document.createElement("div");
       filters.className = "greenest-filters";
@@ -1617,51 +1567,6 @@ function dispatchWidgetReadyEvent(widget) {
         console.log("[GreenestWidget] Recipe drawer trigger clicked");
       }
       this.setRecipeDrawerOpen(!this.recipeDrawerOpen);
-    }
-
-    toggleTrackingPanel() {
-      this.setTrackingPanelOpen(!this.trackingPanelOpen);
-    }
-
-    setTrackingPanelOpen(open) {
-      this.trackingPanelOpen = !!open;
-      if (!this.trackingPanel) return;
-      this.trackingPanel.hidden = !this.trackingPanelOpen;
-      if (this.trackingPanelOpen) {
-        // Sulge retseptide drawer kui lahti
-        if (this.recipeDrawerOpen) this.setRecipeDrawerOpen(false);
-        requestAnimationFrame(() => {
-          if (this.trackingInput) this.trackingInput.focus();
-        });
-      }
-    }
-
-    fetchTracking(trackingCode) {
-      if (!this.webAppUrl) {
-        this.appendMessage("assistant", t("error_missing_api"));
-        return;
-      }
-
-      this.setLoading(true);
-      this.setThinking(true);
-
-      fetch(this.webAppUrl, {
-        method: "POST",
-        body: JSON.stringify({ action: "trackParcel", tracking_code: trackingCode }),
-      })
-        .then((res) => res.json())
-        .then((data) => {
-          this.setLoading(false);
-          this.setThinking(false);
-          const text = (data && data.assistantText) || t("tracking_error");
-          this.appendMessage("assistant", text);
-          if (this.trackingInput) this.trackingInput.value = "";
-        })
-        .catch(() => {
-          this.setLoading(false);
-          this.setThinking(false);
-          this.appendMessage("assistant", t("tracking_error"));
-        });
     }
 
     startLauncherNudge() {
