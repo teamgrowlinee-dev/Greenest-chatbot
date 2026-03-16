@@ -2276,6 +2276,12 @@ function dispatchWidgetReadyEvent(widget) {
       ACTIVE_LOCALE = lang;
       RECIPE_ONLY_NOTICE = t("recipe_only_notice");
 
+      // Update welcome message if it's the only message
+      if (this.messagesEl) {
+        const welcomeEl = this.messagesEl.querySelector(".greenest-message[data-welcome='1'] .greenest-bubble");
+        if (welcomeEl) welcomeEl.textContent = t("welcome_message");
+      }
+
       // Update lang buttons
       if (this.langBtns) {
         Object.entries(this.langBtns).forEach(([code, btn]) => {
