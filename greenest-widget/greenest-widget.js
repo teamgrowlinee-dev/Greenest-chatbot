@@ -2197,8 +2197,9 @@ function dispatchWidgetReadyEvent(widget) {
           const img = document.createElement("img");
           img.className = "greenest-shopping-img";
           img.src = imageUrl;
-          img.alt = name;
+          img.alt = "";
           img.loading = "lazy";
+          img.onerror = () => { img.style.display = "none"; };
           card.appendChild(img);
         }
 

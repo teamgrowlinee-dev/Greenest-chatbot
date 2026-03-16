@@ -691,43 +691,39 @@
 }
 
 .greenest-shopping-card {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto auto;
+  gap: 4px 10px;
   border: 1px solid var(--greenest-border);
   border-radius: 12px;
-  padding: 8px 10px;
+  padding: 10px 12px;
   background: rgba(255, 255, 255, 0.03);
+  align-items: center;
 }
 
 .greenest-shopping-img {
-  width: 52px;
-  height: 52px;
-  border-radius: 8px;
-  object-fit: cover;
-  flex-shrink: 0;
-  background: rgba(255, 255, 255, 0.08);
+  display: none;
 }
 
 .greenest-shopping-info {
-  flex: 1;
+  grid-column: 1;
+  grid-row: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
 }
 
 .greenest-shopping-name {
-  font-size: 0.87rem;
+  font-size: 0.88rem;
   font-weight: 600;
   color: var(--greenest-text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  line-height: 1.3;
 }
 
 .greenest-shopping-name a {
-  color: inherit;
+  color: var(--greenest-text);
   text-decoration: none;
 }
 
@@ -736,9 +732,9 @@
 }
 
 .greenest-shopping-price {
-  font-size: 0.85rem;
+  font-size: 0.9rem;
   color: var(--greenest-green);
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .greenest-shopping-stock {
@@ -746,24 +742,28 @@
 }
 
 .greenest-shopping-stock.in-stock {
-  color: var(--greenest-green);
-}
-
-.greenest-shopping-stock.out-of-stock {
   color: var(--greenest-muted);
 }
 
+.greenest-shopping-stock.out-of-stock {
+  color: var(--greenest-error);
+}
+
 .greenest-shopping-add-btn {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: center;
   flex-shrink: 0;
   border: none;
   border-radius: 10px;
-  padding: 6px 12px;
+  padding: 7px 14px;
   background: var(--greenest-green);
   color: #012714;
-  font-weight: 600;
+  font-weight: 700;
   font-size: 0.82rem;
   cursor: pointer;
   transition: opacity 160ms ease;
+  white-space: nowrap;
 }
 
 .greenest-shopping-add-btn:disabled {
