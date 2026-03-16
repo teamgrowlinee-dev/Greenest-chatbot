@@ -83,9 +83,83 @@ const STR = {
     assistant_steps: "Sammud",
     open_cart_link: "Ava ostukorv",
   },
+  en: {
+    widget_title: "recipe assistant",
+    launcher_label: "Open chat with Greenest",
+    launcher_greeting: "Hi! I'm your Recipe Recommender!",
+    launcher_help:
+      "I help you choose recipes, add products to your cart and answer customer support questions.",
+    launcher_cta: "Tap me to get started!",
+    chat_close_label: "Close chat",
+    chat_minimize_label: "Minimise chat",
+    status_online: "Online",
+    chat_placeholder: "Type here...",
+    send_btn: "Send",
+    sending_btn: "Sending...",
+    thinking_text: "Thinking...",
+    open_cart_label: "Open cart",
+    cart_title: "Cart",
+    cart_close_label: "Close cart",
+    cart_total_label: "Total",
+    cart_empty: "Your cart is empty.",
+    cart_empty_btn: "Clear",
+    cart_close_btn: "Close",
+    cart_checkout_btn: "Checkout",
+    cart_remove_btn: "Remove",
+    cart_added_message: "Added {count} product(s) to your cart.",
+    powered_by: "Powered by Growlinee",
+    welcome_message:
+      "Hi! Feel free to ask me anything — I can help with recipes, your cart and customer support.",
+    recipe_only_notice:
+      "In this mode individual product search is limited. Recipes and customer support (shipping/returns/payment/contact) are available.",
+    recipes_open: "Open recipes",
+    recipes_close: "Close recipes",
+    recipes_title: "Recipes",
+    recipes_search_placeholder: "Search recipes...",
+    recipes_loading: "Loading recipes...",
+    recipes_load_failed: "Failed to load recipes: {error}",
+    recipes_not_found: "No recipes found.",
+    recipes_retry: "Try again",
+    preview_loading: "Loading recipe products...",
+    preview_error: "Could not load recipe products.",
+    preview_retry: "Try again",
+    confirm_title: "Selected recipe: {name}",
+    confirm_products_note:
+      "Note: these may not be all the ingredients needed.",
+    confirm_copy_guide_btn: "Copy recipe text",
+    confirm_copy_done: "Recipe copied",
+    confirm_copy_failed: "Copy failed",
+    confirm_servings_label: "How many servings?",
+    confirm_add_btn: "Add to cart",
+    confirm_cancel_btn: "Cancel",
+    confirm_cancelled_message: "Got it — nothing added.",
+    product_fallback_name: "Product",
+    recipe_fallback_title: "Recipe {count}",
+    close_notice_label: "Close notice",
+    cart_banner_text: "{count} recipes match your cart — open assistant",
+    cart_banner_cta: "Open assistant",
+    cart_candidates_loading: "Loading cart recipes...",
+    filters_vegan: "Vegan",
+    filters_gluten_free: "Gluten-free",
+    recipe_servings_suffix: "{count} servings",
+    product_search_blocked:
+      "In this mode I can help with recipe ideas. Individual product search is still in development.",
+    error_missing_api: "API address missing.",
+    error_missing_api_long:
+      "API address missing. Check GREENEST_WIDGET_CONFIG.apiUrl.",
+    error_no_recipes_returned: "No recipes returned.",
+    error_empty_query: "Please enter a question.",
+    error_parse_json: "Could not parse response.",
+    error_request_failed: "Request failed.",
+    error_unknown: "An unknown error occurred.",
+    error_no_response: "No response received.",
+    assistant_ingredients: "Ingredients",
+    assistant_steps: "Steps",
+    open_cart_link: "Open cart",
+  },
 };
 
-const ACTIVE_LOCALE = "et";
+let ACTIVE_LOCALE = "et";
 const DEFAULT_WEBAPP_URL =
   "https://script.google.com/macros/s/AKfycbxyHpFFfz90pFYs4tVd5VVCYONiZ269ahqFiV1LRc4756WVx-1JUg3vmD9t2uKmvYY0/exec";
 const DEFAULT_SITE_TOKEN = "REPLACE_WITH_GREENEST_SITE_TOKEN";
@@ -517,8 +591,8 @@ function buildGreenestAutoCartAdapter(globalConfig) {
 }
 
 function t(key, vars) {
-  const table = STR[ACTIVE_LOCALE] || {};
-  const template = table[key] || key;
+  const table = STR[ACTIVE_LOCALE] || STR["et"] || {};
+  const template = table[key] || (STR["et"] || {})[key] || key;
   return template.replace(/\{(\w+)\}/g, (match, name) => {
     if (!vars || vars[name] === undefined || vars[name] === null) {
       return "";
@@ -527,7 +601,7 @@ function t(key, vars) {
   });
 }
 
-const RECIPE_ONLY_NOTICE = t("recipe_only_notice");
+let RECIPE_ONLY_NOTICE = t("recipe_only_notice");
 const LAUNCHER_GREETING_LOOP_MS = 52000;
 const CART_STORAGE_KEY = "greenest_widget_cart_v1";
 const CART_BANNER_LAST_SEEN_KEY = "gw_last_seen_cart_sig";
@@ -1092,11 +1166,13 @@ function dispatchWidgetReadyEvent(widget) {
       headerMeta.className = "greenest-header-meta";
       const title = document.createElement("strong");
       title.textContent = GREENEST_TITLE_TEXT;
+      this.headerTitleEl = title;
       headerMeta.appendChild(title);
 
       const status = document.createElement("div");
       status.className = "greenest-header-status";
       status.innerHTML = `<span class="greenest-status-dot" aria-hidden="true"></span>${t("status_online")}`;
+      this.headerStatusEl = status;
       headerMeta.appendChild(status);
 
       const poweredHeader = document.createElement("div");
@@ -1106,6 +1182,7 @@ function dispatchWidgetReadyEvent(widget) {
       poweredHeaderLink.target = "_blank";
       poweredHeaderLink.rel = "noreferrer noopener";
       poweredHeaderLink.textContent = t("powered_by");
+      this.poweredHeaderLinkEl = poweredHeaderLink;
       poweredHeader.appendChild(poweredHeaderLink);
       headerMeta.appendChild(poweredHeader);
 
@@ -1129,6 +1206,25 @@ function dispatchWidgetReadyEvent(widget) {
         this.addCartBadge(cartBtn);
         headerActions.appendChild(cartBtn);
       }
+
+      const langSwitcher = document.createElement("div");
+      langSwitcher.className = "greenest-lang-switcher";
+      const langs = [
+        { code: "et", flag: "🇪🇪" },
+        { code: "en", flag: "🇬🇧" },
+      ];
+      this.langBtns = {};
+      langs.forEach(({ code, flag }) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "greenest-lang-btn" + (code === ACTIVE_LOCALE ? " active" : "");
+        btn.textContent = flag;
+        btn.setAttribute("aria-label", code.toUpperCase());
+        btn.addEventListener("click", () => this.setLocale(code));
+        this.langBtns[code] = btn;
+        langSwitcher.appendChild(btn);
+      });
+      headerActions.appendChild(langSwitcher);
 
       const minimizeBtn = document.createElement("button");
       minimizeBtn.type = "button";
@@ -1184,14 +1280,16 @@ function dispatchWidgetReadyEvent(widget) {
       veganCheckbox.type = "checkbox";
       this.veganCheckbox = veganCheckbox;
       veganLabel.appendChild(veganCheckbox);
-      veganLabel.appendChild(document.createTextNode(t("filters_vegan")));
+      this.veganLabelText = document.createTextNode(t("filters_vegan"));
+      veganLabel.appendChild(this.veganLabelText);
 
       const glutenLabel = document.createElement("label");
       const glutenCheckbox = document.createElement("input");
       glutenCheckbox.type = "checkbox";
       this.glutenCheckbox = glutenCheckbox;
       glutenLabel.appendChild(glutenCheckbox);
-      glutenLabel.appendChild(document.createTextNode(t("filters_gluten_free")));
+      this.glutenLabelText = document.createTextNode(t("filters_gluten_free"));
+      glutenLabel.appendChild(this.glutenLabelText);
 
       filters.appendChild(veganLabel);
       filters.appendChild(glutenLabel);
@@ -2171,6 +2269,33 @@ function dispatchWidgetReadyEvent(widget) {
     scrollMessages() {
       if (!this.messagesEl) return;
       this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+    }
+
+    setLocale(lang) {
+      if (!STR[lang] || lang === ACTIVE_LOCALE) return;
+      ACTIVE_LOCALE = lang;
+      RECIPE_ONLY_NOTICE = t("recipe_only_notice");
+
+      // Update lang buttons
+      if (this.langBtns) {
+        Object.entries(this.langBtns).forEach(([code, btn]) => {
+          btn.classList.toggle("active", code === lang);
+        });
+      }
+      // Header
+      if (this.headerTitleEl) this.headerTitleEl.textContent = t("widget_title");
+      if (this.headerStatusEl) this.headerStatusEl.innerHTML = `<span class="greenest-status-dot" aria-hidden="true"></span>${t("status_online")}`;
+      if (this.poweredHeaderLinkEl) this.poweredHeaderLinkEl.textContent = t("powered_by");
+      // Filters
+      if (this.veganLabelText) this.veganLabelText.nodeValue = t("filters_vegan");
+      if (this.glutenLabelText) this.glutenLabelText.nodeValue = t("filters_gluten_free");
+      // Input
+      if (this.textarea) this.textarea.placeholder = t("chat_placeholder");
+      if (this.sendButton && !this.sendButton.disabled) this.sendButton.textContent = t("send_btn");
+      // Recipes trigger
+      if (this.recipesTriggerBtn) {
+        this.recipesTriggerBtn.textContent = this.recipeDrawerOpen ? t("recipes_close") : t("recipes_open");
+      }
     }
 
     appendShoppingProductCards(products) {

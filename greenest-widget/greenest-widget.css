@@ -286,7 +286,43 @@
 .greenest-header-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
+}
+
+.greenest-lang-switcher {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  padding: 2px;
+  margin-right: 4px;
+}
+
+.greenest-lang-btn {
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  width: 28px;
+  height: 28px;
+  font-size: 1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.45;
+  transition: opacity 150ms ease, background 150ms ease;
+  line-height: 1;
+  padding: 0;
+}
+
+.greenest-lang-btn.active {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.greenest-lang-btn:hover {
+  opacity: 0.85;
 }
 
 .greenest-icon-btn {
@@ -755,20 +791,32 @@
   align-self: center;
   flex-shrink: 0;
   border: none;
-  border-radius: 10px;
-  padding: 7px 14px;
+  border-radius: 14px;
+  padding: 0 18px;
+  height: 40px;
   background: var(--greenest-green);
   color: #012714;
-  font-weight: 700;
-  font-size: 0.82rem;
+  font-weight: 600;
+  font-size: 0.85rem;
   cursor: pointer;
-  transition: opacity 160ms ease;
   white-space: nowrap;
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+
+.greenest-shopping-add-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+}
+
+.greenest-shopping-add-btn:active {
+  transform: translateY(0) scale(0.98);
 }
 
 .greenest-shopping-add-btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
 }
 
 .greenest-confirm-products {
