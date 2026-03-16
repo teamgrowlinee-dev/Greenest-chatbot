@@ -1251,25 +1251,6 @@ function dispatchWidgetReadyEvent(widget) {
         headerActions.appendChild(cartBtn);
       }
 
-      const langSwitcher = document.createElement("div");
-      langSwitcher.className = "greenest-lang-switcher";
-      const langs = [
-        { code: "et", flag: "🇪🇪" },
-        { code: "en", flag: "🇬🇧" },
-      ];
-      this.langBtns = {};
-      langs.forEach(({ code, flag }) => {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "greenest-lang-btn" + (code === ACTIVE_LOCALE ? " active" : "");
-        btn.textContent = flag;
-        btn.setAttribute("aria-label", code.toUpperCase());
-        btn.addEventListener("click", () => this.setLocale(code));
-        this.langBtns[code] = btn;
-        langSwitcher.appendChild(btn);
-      });
-      headerActions.appendChild(langSwitcher);
-
       const minimizeBtn = document.createElement("button");
       minimizeBtn.type = "button";
       minimizeBtn.className = "greenest-minimize-btn";
@@ -2442,11 +2423,6 @@ function dispatchWidgetReadyEvent(widget) {
     refreshStaticLocaleUi() {
       RECIPE_ONLY_NOTICE = t("recipe_only_notice");
 
-      if (this.langBtns) {
-        Object.entries(this.langBtns).forEach(([code, btn]) => {
-          btn.classList.toggle("active", code === ACTIVE_LOCALE);
-        });
-      }
       if (this.launcher) {
         this.launcher.setAttribute("aria-label", t("launcher_label"));
       }
