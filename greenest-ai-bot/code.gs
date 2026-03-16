@@ -217,10 +217,13 @@ function buildSupportFallback_(intent) {
   };
 }
 
-function buildSmalltalkFallback_() {
+function buildSmalltalkFallback_(lang) {
+  var isEn = normalizeLang_(lang) === 'en';
   return {
     mode: 'smalltalk',
-    assistantText: 'Selge. Küsi julgelt retsepti, tarne, tagastuse, makse või kontakti kohta.',
+    assistantText: isEn
+      ? 'Got it. Feel free to ask about recipes, shipping, returns, payment or contact details.'
+      : 'Selge. Küsi julgelt retsepti, tarne, tagastuse, makse või kontakti kohta.',
     mainProducts: [],
     upsellProducts: [],
     vendor: VENDOR_NAME,
@@ -238,7 +241,7 @@ var GREENEST_STRICT_RULES = [
   'REEGLID, mida sa PEAD järgima:',
   '1. Vasta AINULT allpool toodud poe teabe põhjal. Kui vastust pole teabes, ütle ausalt "Kahjuks ei oska sellele vastata. Kirjuta palun ' + GREENEST_SUPPORT.email + ' või helista ' + GREENEST_SUPPORT.phone + '."',
   '2. Ära kunagi leiuta fakte, hindu, tähtaegu ega tingimusi, mida teabes pole.',
-  '3. Vasta eesti keeles, lühidalt (1–3 lauset), sõbralikult ja konkreetselt.',
+  '3. Vasta lühidalt (1–3 lauset), sõbralikult ja konkreetselt. Kui süsteem või kasutaja määrab keele, vasta selles keeles; muidu vasta eesti keeles.',
   '4. Ära soovita tooteid ega retsepte tekstivastuses – selleks on eraldi süsteem.',
   '5. Kui klient on vihane või probleem on tõsine, soovita alati kirjutada ' + GREENEST_SUPPORT.email + ' või helistada ' + GREENEST_SUPPORT.phone + '.',
   '6. Sa oled Greenesti kliendiabi assistent. Greenest (greenest.ee) on Eesti mahetoidu e-pood – müüb mahe- ja looduslikke toiduaineid.',
@@ -1318,14 +1321,19 @@ function parseSteps_(text) {
   return [s];
 }
 
-function formatRecipeTextFromBank_(rec) {
+function normalizeLang_(lang) {
+  return String(lang || '').trim().toLowerCase() === 'en' ? 'en' : 'et';
+}
+
+function formatRecipeTextFromBank_(rec, lang) {
   if (!rec) return '';
 
+  var isEn = normalizeLang_(lang) === 'en';
   var title = String(rec.recipe_name || '').trim();
   var servings = rec.default_servings ? Number(rec.default_servings) : null;
 
   var lines = [];
-  lines.push(servings ? (title + ' (' + servings + ' portsjonit)') : title);
+  lines.push(servings ? (title + ' (' + servings + ' ' + (isEn ? 'servings' : 'portsjonit') + ')') : title);
   lines.push('');
 
   var reqLines = [];
@@ -1340,11 +1348,11 @@ function formatRecipeTextFromBank_(rec) {
     var row = '- ' + (amt ? (amt + ' ') : '') + nm;
 
     if (ing.required) reqLines.push(row);
-    else optLines.push(row + ' (valikuline)');
+    else optLines.push(row + (isEn ? ' (optional)' : ' (valikuline)'));
   }
 
   if (reqLines.length || optLines.length) {
-    lines.push('Koostisosad (Greenestist):');
+    lines.push(isEn ? 'Ingredients (from Greenest):' : 'Koostisosad (Greenestist):');
     reqLines.forEach(function (x) { lines.push(x); });
     optLines.forEach(function (x) { lines.push(x); });
     lines.push('');
@@ -1352,7 +1360,7 @@ function formatRecipeTextFromBank_(rec) {
 
   var home = String(rec.home_ingredients || '').trim();
   if (home) {
-    lines.push('Kodust / värsked:');
+    lines.push(isEn ? 'Home / fresh:' : 'Kodust / värsked:');
     var homeLines = home.split(/\n|, /).map(function (x) { return String(x || '').trim(); }).filter(Boolean);
     homeLines.forEach(function (x) { lines.push('- ' + x); });
     lines.push('');
@@ -1360,7 +1368,7 @@ function formatRecipeTextFromBank_(rec) {
 
   var steps = parseSteps_(rec.instructions_steps);
   if (steps.length) {
-    lines.push('Sammud:');
+    lines.push(isEn ? 'Steps:' : 'Sammud:');
     for (var j = 0; j < steps.length; j++) {
       var st = String(steps[j] || '').trim();
       if (!st) continue;
@@ -1441,67 +1449,154 @@ function getTopShoppingCandidates_(products, query, limit) {
   };
 }
 
-function buildShoppingResponse_(query, products) {
-  var top = getTopShoppingCandidates_(products, query, 50);
-  var scored = top.candidates;
+// Step 1: AI normaliseerib kliendi päringu — parandab kirjavead, teisendab käänded nimetavasse
+function normalizeShoppingQuery_(query) {
+  var apiKey = getScriptProp_('ANTHROPIC_API_KEY');
+  if (!apiKey) return query;
 
-  if (!scored.length) {
-    return {
-      mode: 'shopping',
-      assistantText:
-        'Proovisin sinu otsingu "' + query + '" järgi tooteid leida, aga otseseid vasteid ei tulnud. ' +
-        'Proovi täpsemat märksõna (nt bränd, maitse, kategooria).',
-      mainProducts: [],
-      upsellProducts: []
-    };
+  var payload = {
+    model: CLAUDE_MODEL,
+    max_tokens: 60,
+    temperature: 0,
+    system: 'Sa normaliseerid eestikeelseid tooteotsingu päringuid. Eemalda tervitused ja täitesõnad (nt "tere", "otsin", "palun", "mulle"). Teisenda käändevormid nimetavasse (nt "pähkleid"→"pähklid", "õunu"→"õun"). Paranda kirjavead. Tagasta AINULT puhastatud otsingutermin(id), midagi muud mitte.',
+    messages: [{ role: 'user', content: 'Päring: "' + String(query || '').trim() + '"' }]
+  };
+
+  try {
+    var response = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
+      method: 'post',
+      contentType: 'application/json',
+      headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true
+    });
+    var body = JSON.parse(response.getContentText());
+    if (response.getResponseCode() !== 200 || !body.content || !body.content.length) return query;
+    var normalized = String(body.content[0].text || '').trim();
+    return normalized || query;
+  } catch (err) {
+    Logger.log('normalizeShoppingQuery_ error: ' + err);
+    return query;
+  }
+}
+
+// Step 3: AI valib rule-based kandidaatidest parimad 1-3
+function pickShoppingProductsWithAI_(originalQuery, normalizedQuery, candidates) {
+  var apiKey = getScriptProp_('ANTHROPIC_API_KEY');
+  if (!apiKey || !candidates.length) return null;
+
+  var lines = candidates.map(function (e) {
+    var p = e.product;
+    var cat = p.categoryPath || p.category || '';
+    return p.id + '|' + p.productName + (cat ? '|' + cat : '');
+  });
+
+  var prompt = [
+    'Kliendi otsing: "' + originalQuery + '" (normaliseeritud: "' + normalizedQuery + '")',
+    '',
+    'Kandidaattooted (id|nimi|kategooria):',
+    lines.join('\n'),
+    '',
+    'Vali 1–3 kõige täpsemini sobivat toodet parimas järjekorras.',
+    'Kui ükski kandidaat ei sobi kliendi otsinguga, tagasta {"ids":[]}.',
+    'Tagasta AINULT JSON kujul {"ids":["id1","id2","id3"]}, mitte midagi muud.'
+  ].join('\n');
+
+  var payload = {
+    model: CLAUDE_MODEL,
+    max_tokens: 120,
+    temperature: 0,
+    system: 'Sa oled Greenesti (Eesti mahetoidu e-pood) tootesoovituse AI. Vali kliendi päringule täpselt sobivad tooted. Kui sobivaid tooteid ei ole, tagasta tühi loend.',
+    messages: [{ role: 'user', content: prompt }]
+  };
+
+  try {
+    var response = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
+      method: 'post',
+      contentType: 'application/json',
+      headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true
+    });
+    var body = JSON.parse(response.getContentText());
+    if (response.getResponseCode() !== 200 || !body.content || !body.content.length) return null;
+    var text = String(body.content[0].text || '').trim();
+    text = text.replace(/^```[a-z]*\n?/, '').replace(/\n?```$/, '').trim();
+    var parsed = JSON.parse(text);
+    return Array.isArray(parsed.ids) ? parsed.ids : null;
+  } catch (err) {
+    Logger.log('pickShoppingProductsWithAI_ error: ' + err);
+    return null;
+  }
+}
+
+function buildShoppingResponse_(query, products, lang) {
+  var isEn = normalizeLang_(lang) === 'en';
+  // Step 1: AI normaliseerib päringu (kirjavead, käänded)
+  var normalizedQuery = normalizeShoppingQuery_(query);
+  Logger.log('Shopping query: "' + query + '" → normalized: "' + normalizedQuery + '"');
+
+  // Step 2: rule-based keyword filter normaliseeritud päringuga
+  var top = getTopShoppingCandidates_(products, normalizedQuery, 50);
+  var candidates = top.candidates;
+
+  // Kui keyword filter ei leia midagi, AI otsib kogu kataloogist (käändevormid vm)
+  if (!candidates.length) {
+    candidates = products.map(function (p) { return { product: p, score: 0 }; });
   }
 
-  var available = [];
-  var unavailable = [];
-  for (var i = 0; i < scored.length; i++) {
-    if (scored[i].product.isAvailable) available.push(scored[i]);
-    else unavailable.push(scored[i]);
+  // Step 3: AI valib kandidaatidest parimad 1-3
+  var aiIds = pickShoppingProductsWithAI_(query, normalizedQuery, candidates);
+
+  if (aiIds && aiIds.length) {
+    var byId = {};
+    candidates.forEach(function (e) { byId[String(e.product.id)] = e.product; });
+    var mainProducts = [];
+    aiIds.forEach(function (id) {
+      var p = byId[String(id)];
+      if (p) mainProducts.push(wrapProductForApi_(p, lang));
+    });
+    if (mainProducts.length) {
+      return {
+        mode: 'shopping',
+        assistantText: isEn
+          ? 'I found products that match your search.'
+          : 'Leidsin sinu otsingule sobivad tooted.',
+        mainProducts: mainProducts,
+        upsellProducts: []
+      };
+    }
   }
 
-  var main = uniqueByProductName_(available, 8);
-  if (main.length < 8) {
-    var need = 8 - main.length;
-    var fill = uniqueByProductName_(unavailable, need);
-    main = main.concat(fill);
-  }
-
-  var upsell = uniqueByProductName_(available.slice(8), 6);
-  if (upsell.length < 6) {
-    var needU = 6 - upsell.length;
-    var fillU = uniqueByProductName_(unavailable.slice(8), needU);
-    upsell = upsell.concat(fillU);
-  }
-
+  // AI tagastas [] — kandidaadid olemas aga ei sobi
   return {
     mode: 'shopping',
-    assistantText:
-      'Sinu otsingu "' + query + '" põhjal leidsin sobivad tooted. ' +
-      'Kui mõni on laost otsas, saad valida alternatiivi või oodata täiendust.',
-    mainProducts: main.map(function (e) { return wrapProductForApi_(e.product); }),
-    upsellProducts: upsell.map(function (e) { return wrapProductForApi_(e.product); })
+    assistantText: isEn
+      ? 'I could not find products in our catalog that match "' + query + '".'
+      : 'Ei leidnud otsingule "' + query + '" sobivaid tooteid meie kataloogist.',
+    mainProducts: [],
+    upsellProducts: []
   };
 }
 
-function buildRecipeResponseFromBank_(query, productsAll, veganOnly, glutenFreeOnly, recipeId) {
+function buildRecipeResponseFromBank_(query, productsAll, veganOnly, glutenFreeOnly, recipeId, lang) {
+  var isEn = normalizeLang_(lang) === 'en';
   var recipeBank = loadRecipeBank_();
   var rec = selectRecipeFromBank_(query, recipeBank, veganOnly, glutenFreeOnly, recipeId);
 
   if (!rec) {
     return {
       mode: 'recipe',
-      assistantText: 'Hetkel ei leidnud Recipe_Bankist ühtegi retsepti.',
+      assistantText: isEn
+        ? 'I could not find a recipe in Recipe_Bank right now.'
+        : 'Hetkel ei leidnud Recipe_Bankist ühtegi retsepti.',
       mainProducts: [],
       upsellProducts: []
     };
   }
 
   var productsById = indexProductsById_(productsAll);
-  var assistantText = formatRecipeTextFromBank_(rec);
+  var assistantText = formatRecipeTextFromBank_(rec, lang);
 
   var missingIngredients = [];
   var mainProducts = [];
@@ -1515,7 +1610,7 @@ function buildRecipeResponseFromBank_(query, productsAll, veganOnly, glutenFreeO
 
     if (!p && pid) missingIngredients.push(String(ing.ingredientName || '').trim());
 
-    var wrapped = p ? wrapProductForApi_(p) : null;
+    var wrapped = p ? wrapProductForApi_(p, lang) : null;
     var enrichedProduct = mergeIngredientMetaIntoProduct_(wrapped, ing);
 
     ingredientMatches.push({
@@ -1555,14 +1650,18 @@ function buildRecipeResponseFromBank_(query, productsAll, veganOnly, glutenFreeO
 
   var home = String(rec.home_ingredients || '').trim();
   if (home) {
-    assistantText += '\n\nKodused / värsked (ei lisata ostukorvi):\n';
+    assistantText += isEn
+      ? '\n\nHome / fresh (not added to cart):\n'
+      : '\n\nKodused / värsked (ei lisata ostukorvi):\n';
     var homeLines = home.split(/\n|, /).map(function (x) { return String(x || '').trim(); }).filter(Boolean);
     homeLines.forEach(function (x) { assistantText += '- ' + x + '\n'; });
     assistantText = assistantText.replace(/\n$/, '');
   }
 
   if (missingIngredients.length) {
-    assistantText += '\n\nMärge: mõne koostisosa jaoks ei leidnud toote-ID järgi kataloogist vastet:\n';
+    assistantText += isEn
+      ? '\n\nNote: some ingredients could not be matched to a catalog product by product ID:\n'
+      : '\n\nMärge: mõne koostisosa jaoks ei leidnud toote-ID järgi kataloogist vastet:\n';
     missingIngredients.forEach(function (x) { assistantText += '- ' + x + '\n'; });
     assistantText = assistantText.replace(/\n$/, '');
   }
@@ -1589,7 +1688,8 @@ function buildRecipeResponseFromBank_(query, productsAll, veganOnly, glutenFreeO
   };
 }
 
-function wrapProductForApi_(p) {
+function wrapProductForApi_(p, lang) {
+  var isEn = normalizeLang_(lang) === 'en';
   var isAvailable = !!p.isAvailable;
   var productId = String(p.product_id || p.productId || p.id || '').trim();
   var sku = String(p.sku || p.productSku || '').trim();
@@ -1614,83 +1714,69 @@ function wrapProductForApi_(p) {
     pack_size: (p.pack_size == null ? null : Number(p.pack_size)),
     pack_unit: p.pack_unit || '',
     qty_unit: p.qty_unit || '',
-    availabilityLabel: isAvailable ? 'Laos' : 'Laost otsas',
+    availabilityLabel: isAvailable ? (isEn ? 'In stock' : 'Laos') : (isEn ? 'Out of stock' : 'Laost otsas'),
     usageProfile: p.usageProfile,
     chatbotDescription: p.chatbotDescription
   };
 }
 
-function handleAssistantQuery_(query, veganOnly, glutenFreeOnly, recipeId) {
+function getLangInstruction_(lang) {
+  return normalizeLang_(lang) === 'en' ? ' Respond in English.' : ' Vasta eesti keeles.';
+}
+
+function handleAssistantQuery_(query, veganOnly, glutenFreeOnly, recipeId, lang) {
   recipeId = String(recipeId || '').trim();
   veganOnly = !!veganOnly;
   glutenFreeOnly = !!glutenFreeOnly;
+  lang = normalizeLang_(lang);
+  var isEn = lang === 'en';
 
   // Direct recipe lookup – skip intent detection
   if (recipeId) {
     var catalogForRecipe = loadAiCatalog_();
-    return buildRecipeResponseFromBank_(query, catalogForRecipe, veganOnly, glutenFreeOnly, recipeId);
+    return buildRecipeResponseFromBank_(query, catalogForRecipe, veganOnly, glutenFreeOnly, recipeId, lang);
   }
 
   // Step 1: fast regex pre-filter (no API call) for trivial cases
   var quickIntent = detectAssistantIntent_(query, []);
 
-  // --- Escalation: angry/urgent → direct contact, no API call needed ---
+  // --- Escalation ---
   if (quickIntent === 'escalation') {
-    return {
-      mode: 'support',
-      assistantText: 'Mõistan, et olukord on ebameeldiv. Palun võta otse ühendust meie klienditoega:\n- E-post: ' + GREENEST_SUPPORT.email + '\n- Telefon: ' + GREENEST_SUPPORT.phone + ' (' + GREENEST_SUPPORT.hours + ')\n\nVastame esimesel võimalusel.',
-      mainProducts: [],
-      upsellProducts: [],
-      vendor: VENDOR_NAME,
-      version: BACKEND_VERSION
-    };
+    var escText = isEn
+      ? 'I understand this is frustrating. Please contact our customer support directly:\n- Email: ' + GREENEST_SUPPORT.email + '\n- Phone: ' + GREENEST_SUPPORT.phone + ' (' + GREENEST_SUPPORT.hours + ')\n\nWe\'ll get back to you as soon as possible.'
+      : 'Mõistan, et olukord on ebameeldiv. Palun võta otse ühendust meie klienditoega:\n- E-post: ' + GREENEST_SUPPORT.email + '\n- Telefon: ' + GREENEST_SUPPORT.phone + ' (' + GREENEST_SUPPORT.hours + ')\n\nVastame esimesel võimalusel.';
+    return { mode: 'support', assistantText: escText, mainProducts: [], upsellProducts: [], vendor: VENDOR_NAME, version: BACKEND_VERSION };
   }
 
-  // --- Greeting: hardcoded, no API call needed ---
+  // --- Greeting ---
   if (quickIntent === 'greeting') {
-    return {
-      mode: 'smalltalk',
-      assistantText: 'Tere! Olen Greenesti assistent. Saan aidata retseptidega ja vastata klienditoe küsimustele (tarne, tagastus, makse, kontakt). Kuidas saan aidata?',
-      mainProducts: [],
-      upsellProducts: [],
-      vendor: VENDOR_NAME,
-      version: BACKEND_VERSION
-    };
+    var greetText = isEn
+      ? 'Hi! I\'m the Greenest assistant. I can help with recipes and answer customer support questions (shipping, returns, payment, contact). How can I help?'
+      : 'Tere! Olen Greenesti assistent. Saan aidata retseptidega ja vastata klienditoe küsimustele (tarne, tagastus, makse, kontakt). Kuidas saan aidata?';
+    return { mode: 'smalltalk', assistantText: greetText, mainProducts: [], upsellProducts: [], vendor: VENDOR_NAME, version: BACKEND_VERSION };
   }
 
-  // Step 2: Claude classifies intent (like trenniekspert classifyIntentWithContext)
-  // Claude overrides the regex result for everything except greeting/escalation
+  // Step 2: Claude classifies intent
   var intent = classifyIntentWithClaude_(query) || quickIntent;
 
-  // --- Support intents: lühike tekst + link (ei kasuta Claudet) ---
+  // --- Support intents ---
   if (String(intent).indexOf('support_') === 0) {
-    return {
-      mode: 'support',
-      assistantText: buildSupportLinkResponse_(intent),
-      mainProducts: [],
-      upsellProducts: [],
-      vendor: VENDOR_NAME,
-      version: BACKEND_VERSION
-    };
+    var supportText = buildSupportLinkResponse_(intent);
+    if (isEn) supportText = translateSupportResponse_(intent);
+    return { mode: 'support', assistantText: supportText, mainProducts: [], upsellProducts: [], vendor: VENDOR_NAME, version: BACKEND_VERSION };
   }
 
-  // --- Smalltalk: Claude answers freely ---
+  // --- Smalltalk: Claude answers in chosen language ---
   if (intent === 'smalltalk') {
-    var claudeSmall = callClaudeHaiku_(query, null);
+    var langHint = getLangInstruction_(lang);
+    var claudeSmall = callClaudeHaikuLang_(query, null, langHint);
     if (claudeSmall) {
-      return {
-        mode: 'smalltalk',
-        assistantText: claudeSmall,
-        mainProducts: [],
-        upsellProducts: [],
-        vendor: VENDOR_NAME,
-        version: BACKEND_VERSION
-      };
+      return { mode: 'smalltalk', assistantText: claudeSmall, mainProducts: [], upsellProducts: [], vendor: VENDOR_NAME, version: BACKEND_VERSION };
     }
-    return buildSmalltalkFallback_();
+    return buildSmalltalkFallback_(lang);
   }
 
-  // --- Product / recipe: load catalog and serve ---
+  // --- Shopping / recipe ---
   var catalogAll = loadAiCatalog_();
 
   if (intent === 'shopping') {
@@ -1701,23 +1787,157 @@ function handleAssistantQuery_(query, veganOnly, glutenFreeOnly, recipeId) {
     });
 
     if (!filtered.length) {
-      return {
-        mode: 'shopping',
-        assistantText: 'Filtrite põhjal ei leitud ühtegi toodet. Proovi muuta filtreid.',
-        mainProducts: [],
-        upsellProducts: [],
-        vendor: VENDOR_NAME,
-        version: BACKEND_VERSION
-      };
+      var noFilterText = isEn ? 'No products found with the selected filters. Try changing the filters.' : 'Filtrite põhjal ei leitud ühtegi toodet. Proovi muuta filtreid.';
+      return { mode: 'shopping', assistantText: noFilterText, mainProducts: [], upsellProducts: [], vendor: VENDOR_NAME, version: BACKEND_VERSION };
     }
 
-    var res = buildShoppingResponse_(query, filtered);
+    var res = buildShoppingResponse_(query, filtered, lang);
     res.vendor = VENDOR_NAME;
     res.version = BACKEND_VERSION;
     return res;
   }
 
-  return buildRecipeResponseFromBank_(query, catalogAll, veganOnly, glutenFreeOnly, '');
+  return buildRecipeResponseFromBank_(query, catalogAll, veganOnly, glutenFreeOnly, '', lang);
+}
+
+function translateSupportResponse_(intent) {
+  var s = GREENEST_SUPPORT;
+  if (intent === 'support_shipping') return 'You can find all shipping and delivery info here:\n[Open shipping info](' + s.delivery_url + ')';
+  if (intent === 'support_returns') return 'You can find returns and refunds info here:\n[Open returns info](' + s.returns_url + ')';
+  if (intent === 'support_payment') return 'You can find payment terms here:\n[Open payment terms](' + s.terms_url + ')';
+  if (intent === 'support_contact') return 'You can find our contact details here:\n[Open contact page](' + s.contacts_url + ')';
+  if (intent === 'support_order') return 'Order-related information is here:\n[Open order terms](' + s.terms_url + ')';
+  return 'For support, please contact: ' + s.email;
+}
+
+function callClaudeHaikuLang_(userMessage, faqContext, langHint) {
+  var apiKey = getScriptProp_('ANTHROPIC_API_KEY');
+  if (!apiKey) return null;
+
+  var systemPrompt = (faqContext ? GREENEST_SYSTEM_PROMPT_SUPPORT : GREENEST_SYSTEM_PROMPT_GENERAL) + (langHint || '');
+  var userPrompt = faqContext
+    ? ('Customer message: ' + String(userMessage || '').trim() + '\nContext: ' + faqContext + '\n\nAnswer in 1–3 sentences based on the store info only.')
+    : ('Customer message: ' + String(userMessage || '').trim() + '\n\nAnswer briefly and helpfully. Do not suggest products or recipes.');
+
+  var payload = {
+    model: CLAUDE_MODEL,
+    max_tokens: 300,
+    temperature: 0,
+    system: systemPrompt,
+    messages: [{ role: 'user', content: userPrompt }]
+  };
+
+  try {
+    var response = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
+      method: 'post',
+      contentType: 'application/json',
+      headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true
+    });
+    var code = response.getResponseCode();
+    var body = JSON.parse(response.getContentText());
+    if (code !== 200 || !body.content || !body.content.length) return null;
+    return String(body.content[0].text || '').trim() || null;
+  } catch (err) {
+    Logger.log('callClaudeHaikuLang_ exception: ' + err);
+    return null;
+  }
+}
+
+function translateChatEntries_(payload) {
+  payload = payload || {};
+  var sourceLang = normalizeLang_(payload.sourceLang || payload.source_lang);
+  var targetLang = normalizeLang_(payload.targetLang || payload.target_lang);
+  var entries = Array.isArray(payload.entries) ? payload.entries : [];
+  var apiKey = getScriptProp_('ANTHROPIC_API_KEY');
+
+  var cleanEntries = entries.map(function (entry, index) {
+    var data = entry || {};
+    return {
+      id: String(data.id || ('entry_' + index)).trim() || ('entry_' + index),
+      kind: String(data.kind || 'assistant_text').trim() || 'assistant_text',
+      text: String(data.text || '').trim()
+    };
+  }).filter(function (entry) {
+    return !!entry.text;
+  });
+
+  if (!cleanEntries.length || sourceLang === targetLang) {
+    return {
+      ok: true,
+      sourceLang: sourceLang,
+      targetLang: targetLang,
+      translations: cleanEntries.map(function (entry) {
+        return { id: entry.id, text: entry.text };
+      })
+    };
+  }
+
+  if (!apiKey) throw new Error('Missing ANTHROPIC_API_KEY');
+
+  var systemPrompt = [
+    'You translate Greenest chat entries between Estonian and English.',
+    'Return ONLY valid JSON in the form {"translations":[{"id":"...","text":"..."}]}.',
+    'Preserve each entry id exactly.',
+    'Translate only natural language.',
+    'Preserve markdown links, bullet lists, numbering, URLs, prices, quantities, units, product names, recipe names, SKUs and codes.',
+    'Do not add explanations, quotes or extra keys.',
+    'Keep line breaks and list structure intact.'
+  ].join('\n');
+
+  var userPrompt = [
+    'Source language: ' + sourceLang,
+    'Target language: ' + targetLang,
+    'Entries JSON:',
+    JSON.stringify(cleanEntries)
+  ].join('\n\n');
+
+  var requestPayload = {
+    model: CLAUDE_MODEL,
+    max_tokens: Math.max(300, cleanEntries.length * 220),
+    temperature: 0,
+    system: systemPrompt,
+    messages: [{ role: 'user', content: userPrompt }]
+  };
+
+  var response = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
+    method: 'post',
+    contentType: 'application/json',
+    headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+    payload: JSON.stringify(requestPayload),
+    muteHttpExceptions: true
+  });
+
+  var code = response.getResponseCode();
+  var body = JSON.parse(response.getContentText());
+  if (code !== 200 || !body.content || !body.content.length) {
+    throw new Error('Translation failed: ' + code);
+  }
+
+  var text = String(body.content[0].text || '').trim();
+  text = text.replace(/^```[a-z]*\n?/, '').replace(/\n?```$/, '').trim();
+  var match = text.match(/\{[\s\S]*\}/);
+  if (match) text = match[0];
+
+  var parsed = JSON.parse(text);
+  var translations = Array.isArray(parsed.translations) ? parsed.translations : [];
+  var byId = {};
+  translations.forEach(function (item) {
+    byId[String(item.id || '').trim()] = String(item.text || '').trim();
+  });
+
+  return {
+    ok: true,
+    sourceLang: sourceLang,
+    targetLang: targetLang,
+    translations: cleanEntries.map(function (entry) {
+      return {
+        id: entry.id,
+        text: byId[entry.id] || entry.text
+      };
+    })
+  };
 }
 
 /*************************************************
@@ -1869,16 +2089,22 @@ function doPost(e) {
       return jsonResponse_(logChatMessage_(payload, chatMeta));
     }
 
+    if (action === 'translate') {
+      return jsonResponse_(translateChatEntries_(payload));
+    }
+
     // ---- ASSISTANT ----
     var query = String(payload.query || '').trim();
     var veganOnly = !!payload.veganOnly;
     var glutenFreeOnly = !!payload.glutenFreeOnly;
     var recipeId = String(payload.recipeId || payload.recipe_id || '').trim();
+    var lang = String(payload.lang || 'et').trim();
 
     if (!query) return jsonResponse_({ ok: false, error: 'Missing query' });
 
-    var result = handleAssistantQuery_(query, veganOnly, glutenFreeOnly, recipeId);
+    var result = handleAssistantQuery_(query, veganOnly, glutenFreeOnly, recipeId, lang);
     result.ok = true;
+    result.lang = normalizeLang_(lang);
     return jsonResponse_(result);
 
   } catch (err) {
@@ -2016,11 +2242,13 @@ function doGet(e) {
     var veganOnly = String(params.veganOnly || '').toLowerCase() === 'true';
     var glutenFreeOnly = String(params.glutenFreeOnly || '').toLowerCase() === 'true';
     var recipeId = String(params.recipeId || params.recipe_id || '').trim();
+    var lang = normalizeLang_(params.lang);
 
     if (!query) return jsonResponse_({ ok: false, error: 'Missing query' });
 
-    var result = handleAssistantQuery_(query, veganOnly, glutenFreeOnly, recipeId);
+    var result = handleAssistantQuery_(query, veganOnly, glutenFreeOnly, recipeId, lang);
     result.ok = true;
+    result.lang = normalizeLang_(lang);
     return jsonResponse_(result);
 
   } catch (err) {

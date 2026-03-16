@@ -82,6 +82,19 @@ const STR = {
     assistant_ingredients: "Koostisosad",
     assistant_steps: "Sammud",
     open_cart_link: "Ava ostukorv",
+    shopping_in_stock: "Laos",
+    shopping_out_of_stock: "Laost otsas",
+    shopping_add_to_cart: "Lisa korvi",
+    shopping_added_btn: "Lisatud ✓",
+    confirm_view_guide_btn: "Vaata juhendit",
+    recipe_summary_qty_missing: "{name} — kogusandmed puuduvad",
+    recipe_summary_already_in_cart: "✓ {name} — {needed}{unit} (juba korvis)",
+    recipe_summary_add_existing:
+      "{name} — {needed}{unit} (+{qty} tk, korvis juba {in_cart})",
+    recipe_summary_add_to_cart: "{name} — {needed}{unit} (korvi: {qty} tk)",
+    system_cart_title: "Sinu ostukorvi järgi",
+    system_recipe_meta: "{match}/{total} koostisosa juba korvis",
+    recipe_query_prefix: "tahan teha",
   },
   en: {
     widget_title: "recipe assistant",
@@ -156,6 +169,19 @@ const STR = {
     assistant_ingredients: "Ingredients",
     assistant_steps: "Steps",
     open_cart_link: "Open cart",
+    shopping_in_stock: "In stock",
+    shopping_out_of_stock: "Out of stock",
+    shopping_add_to_cart: "Add to cart",
+    shopping_added_btn: "Added ✓",
+    confirm_view_guide_btn: "View guide",
+    recipe_summary_qty_missing: "{name} — quantity data unavailable",
+    recipe_summary_already_in_cart: "✓ {name} — {needed}{unit} (already in cart)",
+    recipe_summary_add_existing:
+      "{name} — {needed}{unit} (+{qty} pcs, already in cart {in_cart})",
+    recipe_summary_add_to_cart: "{name} — {needed}{unit} (add to cart: {qty} pcs)",
+    system_cart_title: "Based on your cart",
+    system_recipe_meta: "{match}/{total} ingredients already in cart",
+    recipe_query_prefix: "i want to make",
   },
 };
 
@@ -1026,8 +1052,12 @@ function dispatchWidgetReadyEvent(widget) {
       this.chatOpen = false;
       this.greetingTooltipEl = null;
       this.messagesEl = null;
+      this.chatEntries = [];
+      this.localeSwitchToken = 0;
+      this.isThinking = false;
       this.typingIndicator = null;
       this.errorEl = null;
+      this.errorMessageState = null;
       this.textarea = null;
       this.veganCheckbox = null;
       this.glutenCheckbox = null;
@@ -1039,15 +1069,27 @@ function dispatchWidgetReadyEvent(widget) {
       this.recipeSearchInput = null;
       this.recipeListEl = null;
       this.recipeDrawerFooter = null;
+      this.recipeDrawerTitleEl = null;
+      this.recipeDrawerCloseBtn = null;
       this.recipeDrawerOpen = false;
       this.recipeFilter = "";
       this.recipes = [];
+      this.recipeListLoading = false;
       this.recipeError = "";
       this.nudgeTimer = null;
+      this.headerTitleEl = null;
+      this.headerStatusEl = null;
+      this.poweredHeaderLinkEl = null;
+      this.poweredFooterLinkEl = null;
+      this.headerMinimizeBtn = null;
+      this.headerCloseBtn = null;
       this.cart = { items: [] };
       this.cartOpen = false;
       this.cartOverlay = null;
       this.cartModal = null;
+      this.cartModalTitleEl = null;
+      this.cartModalCloseIconEl = null;
+      this.cartTotalLabelEl = null;
       this.cartItemsEl = null;
       this.cartTotalEl = null;
       this.cartEmptyBtn = null;
@@ -1064,6 +1106,8 @@ function dispatchWidgetReadyEvent(widget) {
       this.defaultServings = DEFAULT_SERVINGS_COUNT;
       this.showInternalCartUI = SHOW_INTERNAL_CART_UI;
       this.cartBannerEl = null;
+      this.cartBannerTextEl = null;
+      this.cartBannerLinkEl = null;
       this.cartBannerSig = "";
       this.cartBannerHideTimer = null;
       this.cartBannerCooldownTimer = null;
@@ -1232,6 +1276,7 @@ function dispatchWidgetReadyEvent(widget) {
       minimizeBtn.setAttribute("aria-label", t("chat_minimize_label"));
       minimizeBtn.textContent = "−";
       minimizeBtn.addEventListener("click", () => this.closeChat());
+      this.headerMinimizeBtn = minimizeBtn;
       headerActions.appendChild(minimizeBtn);
 
       const closeBtn = document.createElement("button");
@@ -1240,6 +1285,7 @@ function dispatchWidgetReadyEvent(widget) {
       closeBtn.setAttribute("aria-label", t("chat_close_label"));
       closeBtn.textContent = "✕";
       closeBtn.addEventListener("click", () => this.closeChat());
+      this.headerCloseBtn = closeBtn;
       headerActions.appendChild(closeBtn);
 
       header.appendChild(headerActions);
@@ -1338,6 +1384,7 @@ function dispatchWidgetReadyEvent(widget) {
       poweredLink.target = "_blank";
       poweredLink.rel = "noreferrer noopener";
       poweredLink.textContent = t("powered_by");
+      this.poweredFooterLinkEl = poweredLink;
       poweredBy.appendChild(poweredLink);
       panel.appendChild(poweredBy);
 
@@ -1389,11 +1436,13 @@ function dispatchWidgetReadyEvent(widget) {
       header.className = "greenest-cart-header";
       const title = document.createElement("strong");
       title.textContent = t("cart_title");
+      this.cartModalTitleEl = title;
       const close = document.createElement("button");
       close.type = "button";
       close.className = "greenest-cart-close";
       close.setAttribute("aria-label", t("cart_close_label"));
       close.textContent = "✕";
+      this.cartModalCloseIconEl = close;
       close.addEventListener("click", () => this.closeCart());
       header.appendChild(title);
       header.appendChild(close);
@@ -1411,6 +1460,7 @@ function dispatchWidgetReadyEvent(widget) {
       totalRow.className = "greenest-cart-total-row";
       const totalLabel = document.createElement("span");
       totalLabel.textContent = t("cart_total_label");
+      this.cartTotalLabelEl = totalLabel;
       const totalValue = document.createElement("span");
       totalValue.className = "greenest-cart-total";
       totalValue.textContent = this.formatPrice(0);
@@ -1459,6 +1509,7 @@ function dispatchWidgetReadyEvent(widget) {
 
     fetchRecipes(force = false) {
       if (!this.webAppUrl) {
+        this.recipeListLoading = false;
         this.recipeError = t("error_missing_api");
         this.renderRecipeList();
         return;
@@ -1467,6 +1518,7 @@ function dispatchWidgetReadyEvent(widget) {
       if (!force) {
         const cached = getCachedRecipes();
         if (cached && cached.length) {
+          this.recipeListLoading = false;
           this.recipes = cached;
           this.recipeError = "";
           this.renderRecipeList();
@@ -1475,6 +1527,7 @@ function dispatchWidgetReadyEvent(widget) {
       }
 
       const url = `${this.webAppUrl}?action=listRecipes&_ts=${Date.now()}`;
+      this.recipeListLoading = true;
       this.recipeError = "";
       this.setRecipeStatus(t("recipes_loading"), false);
 
@@ -1499,6 +1552,7 @@ function dispatchWidgetReadyEvent(widget) {
           })
         )
         .then((data) => {
+          this.recipeListLoading = false;
           const recipes = Array.isArray(data.recipes) ? data.recipes : [];
           this.recipes = recipes
             .map((recipe, idx) => this.normalizeRecipeItem(recipe, idx))
@@ -1511,6 +1565,7 @@ function dispatchWidgetReadyEvent(widget) {
           this.renderRecipeList();
         })
         .catch((error) => {
+          this.recipeListLoading = false;
           console.error("[GreenestWidget] Failed to load recipes", error, {
             stack: error.stack,
             responseText: error.responseText,
@@ -1564,11 +1619,13 @@ function dispatchWidgetReadyEvent(widget) {
       header.className = "greenest-recipe-drawer-header";
       const title = document.createElement("strong");
       title.textContent = t("recipes_title");
+      this.recipeDrawerTitleEl = title;
       const close = document.createElement("button");
       close.type = "button";
       close.className = "greenest-recipes-close";
       close.setAttribute("aria-label", t("recipes_close"));
       close.textContent = "✕";
+      this.recipeDrawerCloseBtn = close;
       close.addEventListener("click", () => {
         if (this.debug) {
           console.log("[GreenestWidget] Recipe drawer close clicked");
@@ -1849,6 +1906,11 @@ function dispatchWidgetReadyEvent(widget) {
       if (!this.recipeListEl) return;
       this.recipeListEl.innerHTML = "";
 
+      if (this.recipeListLoading) {
+        this.setRecipeStatus(t("recipes_loading"), false);
+        return;
+      }
+
       if (this.recipeError) {
         this.setRecipeStatus(
           t("recipes_load_failed", { error: this.recipeError }),
@@ -1920,16 +1982,574 @@ function dispatchWidgetReadyEvent(widget) {
       return card;
     }
 
-    appendWelcomeMessage() {
+    normalizeLocaleCode(locale) {
+      return String(locale || "et").trim().toLowerCase() === "en" ? "en" : "et";
+    }
+
+    createChatEntry(type, options = {}) {
+      const sourceLocale = this.normalizeLocaleCode(
+        options.sourceLocale || ACTIVE_LOCALE
+      );
+      const textByLang = isObject(options.textByLang)
+        ? { ...options.textByLang }
+        : {};
+      if (
+        options.text !== undefined &&
+        options.text !== null &&
+        textByLang[sourceLocale] == null
+      ) {
+        textByLang[sourceLocale] = String(options.text);
+      }
+      return {
+        id: options.id || this.makeRequestId(type || "chat"),
+        type,
+        sourceLocale,
+        textByLang,
+        payload: isObject(options.payload) ? options.payload : {},
+      };
+    }
+
+    isTranslatableChatEntry(entry) {
+      return (
+        !!entry &&
+        (entry.type === "user_text" ||
+          entry.type === "assistant_text" ||
+          entry.type === "error_text")
+      );
+    }
+
+    getChatEntryText(entry, locale = ACTIVE_LOCALE) {
+      if (!entry) return "";
+      const normalized = this.normalizeLocaleCode(locale);
+      const map = isObject(entry.textByLang) ? entry.textByLang : {};
+      return String(
+        map[normalized] || map[entry.sourceLocale] || map.et || map.en || ""
+      ).trim();
+    }
+
+    upsertChatEntryText(entry, locale, text) {
+      if (!entry) return;
+      if (!isObject(entry.textByLang)) {
+        entry.textByLang = {};
+      }
+      entry.textByLang[this.normalizeLocaleCode(locale)] = String(text || "");
+    }
+
+    appendChatEntry(entry) {
+      if (!entry) return null;
+      this.chatEntries.push(entry);
+      this.appendRenderedChatEntry(entry);
+      return entry;
+    }
+
+    appendRenderedChatEntry(entry) {
+      if (!this.messagesEl || !entry) return;
+      const element = this.renderChatEntry(entry);
+      if (!element) return;
+      this.messagesEl.appendChild(element);
+      this.scrollMessages();
+    }
+
+    renderChatEntries() {
       if (!this.messagesEl) return;
+      this.messagesEl.innerHTML = "";
+      this.chatEntries.forEach((entry) => {
+        const element = this.renderChatEntry(entry);
+        if (element) {
+          this.messagesEl.appendChild(element);
+        }
+      });
+      this.scrollMessages();
+    }
+
+    getSystemChatEntry(type, sig) {
+      return this.chatEntries.find(
+        (entry) =>
+          entry &&
+          entry.type === type &&
+          String((entry.payload || {}).sig || "") === String(sig || "")
+      ) || null;
+    }
+
+    renderChatEntry(entry) {
+      if (!entry) return null;
+      if (entry.type === "welcome") return this.renderWelcomeEntry(entry);
+      if (entry.type === "user_text") return this.renderTextEntry(entry, "user");
+      if (entry.type === "assistant_text") {
+        return this.renderTextEntry(entry, "assistant");
+      }
+      if (entry.type === "error_text") return this.renderTextEntry(entry, "assistant");
+      if (entry.type === "shopping_cards") return this.renderShoppingCardsEntry(entry);
+      if (entry.type === "cart_notice") return this.renderCartNoticeEntry(entry);
+      if (entry.type === "recipe_only_notice") {
+        return this.renderRecipeOnlyNoticeEntry(entry);
+      }
+      if (entry.type === "recipe_confirm") {
+        return this.renderRecipeConfirmEntry(entry);
+      }
+      if (entry.type === "system_cart_candidates") {
+        return this.renderSystemCartCandidatesEntry(entry);
+      }
+      return null;
+    }
+
+    renderWelcomeEntry(entry) {
       const message = document.createElement("div");
       message.className = "greenest-message assistant";
       message.dataset.welcome = "1";
+      message.dataset.entryId = entry.id;
       const bubble = document.createElement("div");
       bubble.className = "greenest-bubble assistant";
       bubble.textContent = t("welcome_message");
       message.appendChild(bubble);
-      this.messagesEl.appendChild(message);
+      return message;
+    }
+
+    renderTextEntry(entry, role) {
+      const message = document.createElement("div");
+      message.className = `greenest-message ${role}`;
+      message.dataset.entryId = entry.id;
+      const bubble = document.createElement("div");
+      bubble.className = `greenest-bubble ${role === "user" ? "user" : "assistant"}`;
+      const text = this.getChatEntryText(entry);
+
+      if (role === "assistant") {
+        const content = this.renderAssistantContent(text);
+        bubble.appendChild(content);
+      } else {
+        bubble.innerHTML = this.escapeAndFormat(text);
+      }
+
+      message.appendChild(bubble);
+      return message;
+    }
+
+    renderShoppingCardsEntry(entry) {
+      const products = Array.isArray((entry.payload || {}).products)
+        ? entry.payload.products
+        : [];
+      if (!products.length) return null;
+
+      const addedProductIds = isObject((entry.payload || {}).addedProductIds)
+        ? entry.payload.addedProductIds
+        : {};
+      const wrapper = document.createElement("div");
+      wrapper.className = "greenest-message assistant";
+      wrapper.dataset.entryId = entry.id;
+      const bubble = document.createElement("div");
+      bubble.className = "greenest-bubble assistant";
+      const grid = document.createElement("div");
+      grid.className = "greenest-shopping-grid";
+
+      products.forEach((product) => {
+        const id = String(
+          product.product_id || product.productId || product.id || product.sku || ""
+        ).trim();
+        if (!id) return;
+        const name =
+          product.name ||
+          product.title ||
+          product.productName ||
+          t("product_fallback_name");
+        const price = Number(product.price || 0);
+        const isAvailable = product.isAvailable !== false;
+        const imageUrl = product.imageUrl || product.image_url || "";
+        const productUrl = product.productUrl || product.product_url || "";
+        const isAdded = !!addedProductIds[id];
+
+        const card = document.createElement("div");
+        card.className = "greenest-shopping-card";
+
+        if (imageUrl) {
+          const img = document.createElement("img");
+          img.className = "greenest-shopping-img";
+          img.src = imageUrl;
+          img.alt = "";
+          img.loading = "lazy";
+          img.onerror = () => {
+            img.style.display = "none";
+          };
+          card.appendChild(img);
+        }
+
+        const info = document.createElement("div");
+        info.className = "greenest-shopping-info";
+
+        const nameEl = document.createElement("div");
+        nameEl.className = "greenest-shopping-name";
+        if (productUrl) {
+          const link = document.createElement("a");
+          link.href = productUrl;
+          link.target = "_blank";
+          link.rel = "noopener";
+          link.textContent = name;
+          nameEl.appendChild(link);
+        } else {
+          nameEl.textContent = name;
+        }
+        info.appendChild(nameEl);
+
+        const priceEl = document.createElement("div");
+        priceEl.className = "greenest-shopping-price";
+        priceEl.textContent = price > 0 ? this.formatPrice(price) : "";
+        info.appendChild(priceEl);
+
+        const stockEl = document.createElement("div");
+        stockEl.className =
+          "greenest-shopping-stock" + (isAvailable ? " in-stock" : " out-of-stock");
+        stockEl.textContent = isAvailable
+          ? t("shopping_in_stock")
+          : t("shopping_out_of_stock");
+        info.appendChild(stockEl);
+
+        card.appendChild(info);
+
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "greenest-shopping-add-btn";
+        btn.textContent = isAdded
+          ? t("shopping_added_btn")
+          : t("shopping_add_to_cart");
+        btn.disabled = !isAvailable || isAdded;
+        btn.addEventListener("click", () => {
+          const added = this.addProductsToCart([{ ...product, qty: 1 }]);
+          if (added > 0) {
+            entry.payload.addedProductIds = {
+              ...(isObject(entry.payload.addedProductIds)
+                ? entry.payload.addedProductIds
+                : {}),
+              [id]: true,
+            };
+            this.notifyCartAddition(added);
+            this.trackEvent("cart_add", {
+              assisted: 1,
+              reason: "shopping_card",
+              items_added: added,
+              product_id: id,
+            });
+            btn.textContent = t("shopping_added_btn");
+            btn.disabled = true;
+          }
+        });
+        card.appendChild(btn);
+
+        grid.appendChild(card);
+      });
+
+      bubble.appendChild(grid);
+      wrapper.appendChild(bubble);
+      return wrapper;
+    }
+
+    renderCartNoticeEntry(entry) {
+      const count = Number((entry.payload || {}).count || 0);
+      const wrapper = document.createElement("div");
+      wrapper.className = "greenest-message assistant";
+      wrapper.dataset.entryId = entry.id;
+      const bubble = document.createElement("div");
+      bubble.className = "greenest-bubble assistant";
+      const text = document.createElement("p");
+      text.style.margin = "0";
+      text.textContent = t("cart_added_message", { count });
+      bubble.appendChild(text);
+      wrapper.appendChild(bubble);
+      return wrapper;
+    }
+
+    renderRecipeOnlyNoticeEntry(entry) {
+      const message = document.createElement("div");
+      message.className = "greenest-message assistant";
+      message.dataset.recipeOnlyNotice = "1";
+      message.dataset.entryId = entry.id;
+      const bubble = document.createElement("div");
+      bubble.className = "greenest-bubble assistant";
+      const content = this.renderAssistantContent(t("recipe_only_notice"));
+      bubble.appendChild(content);
+      message.appendChild(bubble);
+      return message;
+    }
+
+    async translateEntryBatch(entries, sourceLang, targetLang) {
+      if (!this.webAppUrl || !Array.isArray(entries) || !entries.length) {
+        return;
+      }
+      const payload = {
+        action: "translate",
+        sourceLang: this.normalizeLocaleCode(sourceLang),
+        targetLang: this.normalizeLocaleCode(targetLang),
+        entries: entries.map((entry) => ({
+          id: entry.id,
+          kind: entry.type,
+          text: this.getChatEntryText(entry, entry.sourceLocale),
+        })),
+      };
+
+      const response = await fetch(this.webAppUrl, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      const text = await response.text();
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (_) {
+        throw new Error(t("error_parse_json"));
+      }
+      if (!response.ok || data.ok === false) {
+        throw new Error(
+          data && data.error ? data.error : t("error_request_failed")
+        );
+      }
+
+      const translations = Array.isArray(data.translations) ? data.translations : [];
+      const byId = {};
+      translations.forEach((item) => {
+        byId[String(item.id || "")] = String(item.text || "");
+      });
+      entries.forEach((entry) => {
+        if (byId[entry.id] != null) {
+          this.upsertChatEntryText(entry, targetLang, byId[entry.id]);
+        }
+      });
+    }
+
+    getTranslationChunks(entries, maxChars = 5000, maxEntries = 10) {
+      const chunks = [];
+      let current = [];
+      let currentChars = 0;
+
+      (Array.isArray(entries) ? entries : []).forEach((entry) => {
+        const text = this.getChatEntryText(entry, entry && entry.sourceLocale);
+        const size = Math.max(1, String(text || "").length);
+        const wouldOverflow =
+          current.length >= maxEntries || currentChars + size > maxChars;
+
+        if (current.length && wouldOverflow) {
+          chunks.push(current);
+          current = [];
+          currentChars = 0;
+        }
+
+        current.push(entry);
+        currentChars += size;
+      });
+
+      if (current.length) {
+        chunks.push(current);
+      }
+
+      return chunks;
+    }
+
+    async appendLocalizedMessage(role, text, options = {}) {
+      const entryType =
+        options.entryType || (role === "user" ? "user_text" : "assistant_text");
+      const sourceLocale = this.normalizeLocaleCode(
+        options.sourceLocale || ACTIVE_LOCALE
+      );
+      const targetLocale = this.normalizeLocaleCode(
+        options.targetLocale || ACTIVE_LOCALE
+      );
+      const entry = this.createChatEntry(entryType, {
+        sourceLocale,
+        text,
+        textByLang: options.textByLang,
+        payload: options.payload,
+      });
+
+      if (
+        this.isTranslatableChatEntry(entry) &&
+        sourceLocale !== targetLocale &&
+        (!isObject(entry.textByLang) || entry.textByLang[targetLocale] == null)
+      ) {
+        try {
+          await this.translateEntryBatch([entry], sourceLocale, targetLocale);
+        } catch (error) {
+          if (this.debug) {
+            console.warn("[GreenestWidget] append translation failed", error);
+          }
+        }
+      }
+
+      return this.appendChatEntry(entry);
+    }
+
+    async ensureTranscriptLocale(targetLang) {
+      const normalized = this.normalizeLocaleCode(targetLang);
+      const groups = {};
+      this.chatEntries.forEach((entry) => {
+        if (!this.isTranslatableChatEntry(entry)) return;
+        if (isObject(entry.textByLang) && entry.textByLang[normalized] != null) {
+          return;
+        }
+        const sourceLang = this.normalizeLocaleCode(entry.sourceLocale);
+        if (sourceLang === normalized) {
+          this.upsertChatEntryText(
+            entry,
+            normalized,
+            this.getChatEntryText(entry, sourceLang)
+          );
+          return;
+        }
+        if (!groups[sourceLang]) groups[sourceLang] = [];
+        groups[sourceLang].push(entry);
+      });
+
+      const tasks = Object.keys(groups).reduce((allTasks, sourceLang) => {
+        this.getTranslationChunks(groups[sourceLang]).forEach((chunk) => {
+          allTasks.push(
+            this.translateEntryBatch(chunk, sourceLang, normalized).catch((error) => {
+              if (this.debug) {
+                console.warn("[GreenestWidget] transcript translation failed", error);
+              }
+            })
+          );
+        });
+        return allTasks;
+      }, []);
+
+      await Promise.all(tasks);
+    }
+
+    async ensureErrorLocale(targetLang) {
+      if (!this.errorMessageState || !this.errorMessageState.textByLang) return;
+      const normalized = this.normalizeLocaleCode(targetLang);
+      if (this.errorMessageState.textByLang[normalized] != null) {
+        return;
+      }
+      const sourceLang = this.normalizeLocaleCode(this.errorMessageState.sourceLocale);
+      if (sourceLang === normalized) {
+        this.errorMessageState.textByLang[normalized] =
+          this.errorMessageState.textByLang[sourceLang] || "";
+        return;
+      }
+      try {
+        const tempEntry = this.createChatEntry("error_text", {
+          id: "error_state",
+          sourceLocale: sourceLang,
+          text: this.errorMessageState.textByLang[sourceLang] || "",
+        });
+        await this.translateEntryBatch([tempEntry], sourceLang, normalized);
+        this.errorMessageState.textByLang[normalized] =
+          tempEntry.textByLang[normalized] || "";
+      } catch (error) {
+        if (this.debug) {
+          console.warn("[GreenestWidget] error translation failed", error);
+        }
+      }
+    }
+
+    refreshStaticLocaleUi() {
+      RECIPE_ONLY_NOTICE = t("recipe_only_notice");
+
+      if (this.langBtns) {
+        Object.entries(this.langBtns).forEach(([code, btn]) => {
+          btn.classList.toggle("active", code === ACTIVE_LOCALE);
+        });
+      }
+      if (this.launcher) {
+        this.launcher.setAttribute("aria-label", t("launcher_label"));
+      }
+      if (this.headerTitleEl) this.headerTitleEl.textContent = t("widget_title");
+      if (this.headerStatusEl) {
+        this.headerStatusEl.innerHTML = `<span class="greenest-status-dot" aria-hidden="true"></span>${t(
+          "status_online"
+        )}`;
+      }
+      if (this.poweredHeaderLinkEl) {
+        this.poweredHeaderLinkEl.textContent = t("powered_by");
+      }
+      if (this.poweredFooterLinkEl) {
+        this.poweredFooterLinkEl.textContent = t("powered_by");
+      }
+      if (this.veganLabelText) this.veganLabelText.nodeValue = t("filters_vegan");
+      if (this.glutenLabelText) {
+        this.glutenLabelText.nodeValue = t("filters_gluten_free");
+      }
+      if (this.textarea) this.textarea.placeholder = t("chat_placeholder");
+      if (this.sendButton) {
+        this.sendButton.textContent = this.sendButton.disabled
+          ? t("sending_btn")
+          : t("send_btn");
+      }
+      if (this.typingIndicator) {
+        this.typingIndicator.textContent = this.isThinking ? t("thinking_text") : "";
+      }
+      if (this.recipesTriggerBtn) {
+        this.recipesTriggerBtn.textContent = this.recipeDrawerOpen
+          ? t("recipes_close")
+          : t("recipes_open");
+      }
+      if (this.headerMinimizeBtn) {
+        this.headerMinimizeBtn.setAttribute("aria-label", t("chat_minimize_label"));
+      }
+      if (this.headerCloseBtn) {
+        this.headerCloseBtn.setAttribute("aria-label", t("chat_close_label"));
+      }
+      if (this.recipeDrawerTitleEl) {
+        this.recipeDrawerTitleEl.textContent = t("recipes_title");
+      }
+      if (this.recipeDrawerCloseBtn) {
+        this.recipeDrawerCloseBtn.setAttribute("aria-label", t("recipes_close"));
+      }
+      if (this.recipeSearchInput) {
+        this.recipeSearchInput.placeholder = t("recipes_search_placeholder");
+      }
+      if (this.cartTopBtn) {
+        this.cartTopBtn.setAttribute("aria-label", t("open_cart_label"));
+      }
+      if (this.cartHeaderBtn) {
+        this.cartHeaderBtn.setAttribute("aria-label", t("open_cart_label"));
+      }
+      if (this.cartModal) {
+        this.cartModal.setAttribute("aria-label", t("cart_title"));
+      }
+      if (this.cartModalTitleEl) {
+        this.cartModalTitleEl.textContent = t("cart_title");
+      }
+      if (this.cartModalCloseIconEl) {
+        this.cartModalCloseIconEl.setAttribute("aria-label", t("cart_close_label"));
+      }
+      if (this.cartCloseBtn) this.cartCloseBtn.textContent = t("cart_close_btn");
+      if (this.cartEmptyBtn) this.cartEmptyBtn.textContent = t("cart_empty_btn");
+      if (this.cartCheckoutLink) {
+        this.cartCheckoutLink.textContent = t("cart_checkout_btn");
+        this.cartCheckoutLink.href = this.getCheckoutUrl();
+      }
+      if (this.cartTotalLabelEl) {
+        this.cartTotalLabelEl.textContent = t("cart_total_label");
+      }
+      if (this.cartBannerTextEl) {
+        this.cartBannerTextEl.textContent = t("cart_banner_text", {
+          count: this.lastCandidatesCount || 0,
+        });
+      }
+      if (this.cartBannerLinkEl) {
+        this.cartBannerLinkEl.textContent = t("cart_banner_cta");
+      }
+      if (this.cartBannerEl) {
+        const closeBtn = this.cartBannerEl.querySelector(".greenest-cart-banner-close");
+        if (closeBtn) {
+          closeBtn.setAttribute("aria-label", t("close_notice_label"));
+        }
+      }
+      this.renderRecipeList();
+      this.updateCartUI();
+      if (this.errorMessageState && this.errorEl) {
+        const text =
+          this.errorMessageState.textByLang[ACTIVE_LOCALE] ||
+          this.errorMessageState.textByLang[this.errorMessageState.sourceLocale] ||
+          "";
+        this.errorEl.textContent = text;
+      }
+    }
+
+    appendWelcomeMessage() {
+      return this.appendChatEntry(
+        this.createChatEntry("welcome", {
+          sourceLocale: ACTIVE_LOCALE,
+        })
+      );
     }
 
     clearChatUI({ keepWelcome = true } = {}) {
@@ -1939,11 +2559,11 @@ function dispatchWidgetReadyEvent(widget) {
       this.showError("");
 
       if (this.messagesEl) {
-        const messages = this.messagesEl.querySelectorAll(".greenest-message");
-        messages.forEach((el) => el.remove());
-        if (keepWelcome) {
-          this.appendWelcomeMessage();
-        }
+        this.messagesEl.innerHTML = "";
+      }
+      this.chatEntries = [];
+      if (keepWelcome) {
+        this.appendWelcomeMessage();
       }
 
       if (this.textarea) {
@@ -1975,6 +2595,9 @@ function dispatchWidgetReadyEvent(widget) {
       );
       if (!messages.length) return;
 
+      this.chatEntries = this.chatEntries.filter(
+        (entry) => entry && entry.type === "welcome"
+      );
       messages.forEach((message) => {
         if (message.dataset.welcome === "1") return;
         this.fadeRemoveElement_(message, 240);
@@ -1998,7 +2621,10 @@ function dispatchWidgetReadyEvent(widget) {
 
     submitRecipeFromBank(recipe) {
       if (!this.webAppUrl) {
-        this.appendMessage("assistant", t("error_missing_api"));
+        this.appendMessage("assistant", t("error_missing_api"), {
+          entryType: "error_text",
+          sourceLocale: ACTIVE_LOCALE,
+        });
         return;
       }
 
@@ -2019,6 +2645,7 @@ function dispatchWidgetReadyEvent(widget) {
         query,
         recipeId: recipe.id,
         querySource: "recipe_bank",
+        lang: ACTIVE_LOCALE,
       };
 
       fetch(this.webAppUrl, {
@@ -2026,7 +2653,7 @@ function dispatchWidgetReadyEvent(widget) {
         body: JSON.stringify(payload),
       })
         .then((response) => response.text().then((text) => ({ response, text })))
-        .then(({ response, text }) => {
+        .then(async ({ response, text }) => {
           let data;
           try {
             data = JSON.parse(text);
@@ -2042,7 +2669,9 @@ function dispatchWidgetReadyEvent(widget) {
 
           const assistantText =
             data.assistantText || data.message || t("error_no_response");
-          this.appendMessage("assistant", assistantText);
+          await this.appendLocalizedMessage("assistant", assistantText, {
+            sourceLocale: data.lang || ACTIVE_LOCALE,
+          });
           this.logChatMessage({
             requestId,
             status: "ok",
@@ -2082,10 +2711,10 @@ function dispatchWidgetReadyEvent(widget) {
           console.error(error);
           const errorMessage =
             error && error.message ? error.message : t("error_unknown");
-          this.appendMessage(
-            "assistant",
-            errorMessage
-          );
+          this.appendLocalizedMessage("assistant", errorMessage, {
+            entryType: "error_text",
+            sourceLocale: ACTIVE_LOCALE,
+          });
           this.logChatMessage({
             requestId,
             status: "error",
@@ -2161,6 +2790,7 @@ function dispatchWidgetReadyEvent(widget) {
         query,
         veganOnly: Boolean(this.veganCheckbox.checked),
         glutenFreeOnly: Boolean(this.glutenCheckbox.checked),
+        lang: ACTIVE_LOCALE,
       };
 
       if (!this.webAppUrl) {
@@ -2185,7 +2815,7 @@ function dispatchWidgetReadyEvent(widget) {
         body: JSON.stringify(payload),
       })
         .then((response) => response.text().then((text) => ({ response, text })))
-        .then(({ response, text }) => {
+        .then(async ({ response, text }) => {
           let data;
           try {
             data = JSON.parse(text);
@@ -2201,7 +2831,9 @@ function dispatchWidgetReadyEvent(widget) {
 
           const assistantText =
             data.assistantText || data.message || t("error_no_response");
-          this.appendMessage("assistant", assistantText);
+          await this.appendLocalizedMessage("assistant", assistantText, {
+            sourceLocale: data.lang || ACTIVE_LOCALE,
+          });
           this.logChatMessage({
             requestId,
             status: "ok",
@@ -2243,27 +2875,22 @@ function dispatchWidgetReadyEvent(widget) {
     }
 
     setThinking(isThinking) {
+      this.isThinking = Boolean(isThinking);
       if (!this.typingIndicator) return;
-      this.typingIndicator.textContent = isThinking ? t("thinking_text") : "";
+      this.typingIndicator.textContent = this.isThinking ? t("thinking_text") : "";
     }
 
-    appendMessage(role, text) {
-      if (!this.messagesEl) return;
-      const message = document.createElement("div");
-      message.className = `greenest-message ${role}`;
-      const bubble = document.createElement("div");
-      bubble.className = `greenest-bubble ${role === "user" ? "user" : "assistant"}`;
-
-      if (role === "assistant") {
-        const content = this.renderAssistantContent(text);
-        bubble.appendChild(content);
-      } else {
-        bubble.innerHTML = this.escapeAndFormat(text);
-      }
-
-      message.appendChild(bubble);
-      this.messagesEl.appendChild(message);
-      this.scrollMessages();
+    appendMessage(role, text, options = {}) {
+      const entryType =
+        options.entryType || (role === "user" ? "user_text" : "assistant_text");
+      return this.appendChatEntry(
+        this.createChatEntry(entryType, {
+          sourceLocale: options.sourceLocale || ACTIVE_LOCALE,
+          text,
+          textByLang: options.textByLang,
+          payload: options.payload,
+        })
+      );
     }
 
     scrollMessages() {
@@ -2271,136 +2898,55 @@ function dispatchWidgetReadyEvent(widget) {
       this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
     }
 
-    setLocale(lang) {
-      if (!STR[lang] || lang === ACTIVE_LOCALE) return;
-      ACTIVE_LOCALE = lang;
-      RECIPE_ONLY_NOTICE = t("recipe_only_notice");
+    async setLocale(lang) {
+      const normalized = this.normalizeLocaleCode(lang);
+      if (!STR[normalized] || normalized === ACTIVE_LOCALE) return;
+      const draft = this.textarea ? this.textarea.value : "";
+      const switchToken = ++this.localeSwitchToken;
 
-      // Update welcome message if it's the only message
-      if (this.messagesEl) {
-        const welcomeEl = this.messagesEl.querySelector(".greenest-message[data-welcome='1'] .greenest-bubble");
-        if (welcomeEl) welcomeEl.textContent = t("welcome_message");
-      }
+      ACTIVE_LOCALE = normalized;
+      this.refreshStaticLocaleUi();
 
-      // Update lang buttons
-      if (this.langBtns) {
-        Object.entries(this.langBtns).forEach(([code, btn]) => {
-          btn.classList.toggle("active", code === lang);
-        });
+      await Promise.all([
+        this.ensureTranscriptLocale(normalized),
+        this.ensureRecipeConfirmEntriesLocale(normalized),
+        this.ensureErrorLocale(normalized),
+      ]);
+
+      if (switchToken !== this.localeSwitchToken) return;
+      this.renderChatEntries();
+      this.refreshStaticLocaleUi();
+      if (this.greetingTooltipEl || this.greetingSequenceTimer) {
+        this.stopLauncherGreetingSequence();
+        if (!this.chatOpen && !this.recipeDrawerOpen) {
+          this.startLauncherGreetingSequence();
+        }
       }
-      // Header
-      if (this.headerTitleEl) this.headerTitleEl.textContent = t("widget_title");
-      if (this.headerStatusEl) this.headerStatusEl.innerHTML = `<span class="greenest-status-dot" aria-hidden="true"></span>${t("status_online")}`;
-      if (this.poweredHeaderLinkEl) this.poweredHeaderLinkEl.textContent = t("powered_by");
-      // Filters
-      if (this.veganLabelText) this.veganLabelText.nodeValue = t("filters_vegan");
-      if (this.glutenLabelText) this.glutenLabelText.nodeValue = t("filters_gluten_free");
-      // Input
-      if (this.textarea) this.textarea.placeholder = t("chat_placeholder");
-      if (this.sendButton && !this.sendButton.disabled) this.sendButton.textContent = t("send_btn");
-      // Recipes trigger
-      if (this.recipesTriggerBtn) {
-        this.recipesTriggerBtn.textContent = this.recipeDrawerOpen ? t("recipes_close") : t("recipes_open");
+      if (this.textarea) {
+        this.textarea.value = draft;
       }
     }
 
     appendShoppingProductCards(products) {
-      if (!this.messagesEl || !products.length) return;
-      const wrapper = document.createElement("div");
-      wrapper.className = "greenest-message assistant";
-      const bubble = document.createElement("div");
-      bubble.className = "greenest-bubble assistant";
-      const grid = document.createElement("div");
-      grid.className = "greenest-shopping-grid";
-      products.forEach((product) => {
-        const id = String(product.product_id || product.productId || product.id || product.sku || "").trim();
-        if (!id) return;
-        const name = product.name || product.title || product.productName || "Toode";
-        const price = Number(product.price || 0);
-        const isAvailable = product.isAvailable !== false;
-        const imageUrl = product.imageUrl || product.image_url || "";
-        const productUrl = product.productUrl || product.product_url || "";
-
-        const card = document.createElement("div");
-        card.className = "greenest-shopping-card";
-
-        if (imageUrl) {
-          const img = document.createElement("img");
-          img.className = "greenest-shopping-img";
-          img.src = imageUrl;
-          img.alt = "";
-          img.loading = "lazy";
-          img.onerror = () => { img.style.display = "none"; };
-          card.appendChild(img);
-        }
-
-        const info = document.createElement("div");
-        info.className = "greenest-shopping-info";
-
-        const nameEl = document.createElement("div");
-        nameEl.className = "greenest-shopping-name";
-        if (productUrl) {
-          const link = document.createElement("a");
-          link.href = productUrl;
-          link.target = "_blank";
-          link.rel = "noopener";
-          link.textContent = name;
-          nameEl.appendChild(link);
-        } else {
-          nameEl.textContent = name;
-        }
-        info.appendChild(nameEl);
-
-        const priceEl = document.createElement("div");
-        priceEl.className = "greenest-shopping-price";
-        priceEl.textContent = price > 0 ? this.formatPrice(price) : "";
-        info.appendChild(priceEl);
-
-        const stockEl = document.createElement("div");
-        stockEl.className = "greenest-shopping-stock" + (isAvailable ? " in-stock" : " out-of-stock");
-        stockEl.textContent = isAvailable ? "Laos" : "Laost otsas";
-        info.appendChild(stockEl);
-
-        card.appendChild(info);
-
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "greenest-shopping-add-btn";
-        btn.textContent = "Lisa korvi";
-        btn.disabled = !isAvailable;
-        btn.addEventListener("click", () => {
-          const added = this.addProductsToCart([{ ...product, qty: 1 }]);
-          if (added > 0) {
-            this.notifyCartAddition(added);
-            this.trackEvent("cart_add", { assisted: 1, reason: "shopping_card", items_added: added, product_id: id });
-            btn.textContent = "Lisatud ✓";
-            btn.disabled = true;
-          }
-        });
-        card.appendChild(btn);
-
-        grid.appendChild(card);
-      });
-      bubble.appendChild(grid);
-      wrapper.appendChild(bubble);
-      this.messagesEl.appendChild(wrapper);
-      this.scrollMessages();
+      if (!products.length) return null;
+      return this.appendChatEntry(
+        this.createChatEntry("shopping_cards", {
+          sourceLocale: ACTIVE_LOCALE,
+          payload: {
+            products: Array.isArray(products) ? products.slice() : [],
+            addedProductIds: {},
+          },
+        })
+      );
     }
 
     notifyCartAddition(count) {
-      if (!this.messagesEl) return;
-      const wrapper = document.createElement("div");
-      wrapper.className = "greenest-message assistant";
-      const bubble = document.createElement("div");
-      bubble.className = "greenest-bubble assistant";
-      const text = document.createElement("p");
-      text.style.margin = "0";
-      text.textContent = t("cart_added_message", { count });
-      bubble.appendChild(text);
-
-      wrapper.appendChild(bubble);
-      this.messagesEl.appendChild(wrapper);
-      this.scrollMessages();
+      return this.appendChatEntry(
+        this.createChatEntry("cart_notice", {
+          sourceLocale: ACTIVE_LOCALE,
+          payload: { count: Number(count || 0) },
+        })
+      );
     }
 
     renderAssistantContent(rawText) {
@@ -2485,7 +3031,7 @@ function dispatchWidgetReadyEvent(widget) {
         }
 
         if (
-          /^(kodused koostisosad|kodused\s*\/\s*värsked|kodust\s*\/\s*värsked)/i.test(
+          /^(kodused koostisosad|kodused\s*\/\s*värsked|kodust\s*\/\s*värsked|home ingredients|fresh ingredients|home\s*\/\s*fresh)/i.test(
             line
           )
         ) {
@@ -2494,12 +3040,12 @@ function dispatchWidgetReadyEvent(widget) {
           return;
         }
 
-        if (/^koostisosad/i.test(line)) {
+        if (/^(koostisosad|ingredients)/i.test(line)) {
           currentExtra = null;
           return;
         }
 
-        if (/^sammud/i.test(line)) {
+        if (/^(sammud|steps)/i.test(line)) {
           currentExtra = null;
           return;
         }
@@ -2843,16 +3389,38 @@ function dispatchWidgetReadyEvent(widget) {
         });
     }
 
-    showError(message) {
+    showError(message, options = {}) {
+      const text = String(message || "");
+      if (!text) {
+        this.errorMessageState = null;
+      } else {
+        const sourceLocale = this.normalizeLocaleCode(
+          options.sourceLocale || ACTIVE_LOCALE
+        );
+        this.errorMessageState = {
+          sourceLocale,
+          textByLang: {
+            ...(isObject(options.textByLang) ? options.textByLang : {}),
+            [sourceLocale]: text,
+          },
+        };
+      }
       if (this.errorEl) {
-        this.errorEl.textContent = message || "";
+        this.errorEl.textContent = text;
       }
     }
 
     sanitizeRecipeLabel(label) {
       let cleaned = String(label || "").trim();
       if (!cleaned) return cleaned;
-      cleaned = cleaned.replace(/^tahan teha\s+/i, "");
+      [STR.et.recipe_query_prefix, STR.en.recipe_query_prefix]
+        .map((prefix) => String(prefix || "").trim())
+        .filter(Boolean)
+        .forEach((prefix) => {
+          if (cleaned.toLowerCase().startsWith(prefix.toLowerCase() + " ")) {
+            cleaned = cleaned.slice(prefix.length).trim();
+          }
+        });
       cleaned = cleaned.replace(/\s*\((vegan|gluteenivaba)\)\s*$/i, "");
       cleaned = cleaned.replace(/\s{2,}/g, " ").trim();
       return cleaned;
@@ -2864,10 +3432,17 @@ function dispatchWidgetReadyEvent(widget) {
 
     buildRecipeQuery(recipe, servings) {
       const raw = String(recipe && recipe.label ? recipe.label : "").trim();
-      if (!raw) return "tahan teha";
+      const prefix = t("recipe_query_prefix");
+      if (!raw) return prefix;
       let query = raw;
-      if (!/^tahan teha\b/i.test(raw)) {
-        query = `tahan teha ${raw}`;
+      const knownPrefixes = [STR.et.recipe_query_prefix, STR.en.recipe_query_prefix]
+        .map((item) => String(item || "").trim().toLowerCase())
+        .filter(Boolean);
+      const hasPrefix = knownPrefixes.some((item) =>
+        raw.toLowerCase().startsWith(item + " ")
+      );
+      if (!hasPrefix) {
+        query = `${prefix} ${raw}`;
       }
       if (servings) {
         query += ` (${t("recipe_servings_suffix", { count: servings })})`;
@@ -2876,25 +3451,20 @@ function dispatchWidgetReadyEvent(widget) {
     }
 
     appendRecipeOnlyNotice() {
-      if (!this.messagesEl) return;
-      const last = this.messagesEl.lastElementChild;
-      if (last && last.dataset && last.dataset.recipeOnlyNotice === "1") {
-        return;
+      const lastEntry = this.chatEntries[this.chatEntries.length - 1];
+      if (lastEntry && lastEntry.type === "recipe_only_notice") {
+        return lastEntry;
       }
-      const message = document.createElement("div");
-      message.className = "greenest-message assistant";
-      message.dataset.recipeOnlyNotice = "1";
-      const bubble = document.createElement("div");
-      bubble.className = "greenest-bubble assistant";
-      const content = this.renderAssistantContent(RECIPE_ONLY_NOTICE);
-      bubble.appendChild(content);
-      message.appendChild(bubble);
-      this.messagesEl.appendChild(message);
-      this.scrollMessages();
+      const entry = this.appendChatEntry(
+        this.createChatEntry("recipe_only_notice", {
+          sourceLocale: ACTIVE_LOCALE,
+        })
+      );
       this.trackEvent("manual_recipe_blocked", {
         assisted: 0,
         reason: "recipe_only_mode",
       });
+      return entry;
     }
 
     handleRecipeSelection(recipe) {
@@ -2908,7 +3478,7 @@ function dispatchWidgetReadyEvent(widget) {
       this.showRecipePreviewConfirmation(recipe);
     }
 
-    fetchRecipePreview(recipe, servings) {
+    fetchRecipePreview(recipe, servings, lang = ACTIVE_LOCALE) {
       if (!this.webAppUrl) {
         return Promise.reject(new Error(t("error_missing_api")));
       }
@@ -2919,6 +3489,7 @@ function dispatchWidgetReadyEvent(widget) {
         recipeId: recipe.id,
         querySource: "recipe_bank",
         previewOnly: true,
+        lang: this.normalizeLocaleCode(lang),
       };
 
       return fetch(this.webAppUrl, {
@@ -3070,6 +3641,7 @@ function dispatchWidgetReadyEvent(widget) {
             baseServings,
             assistantText: String(data.assistantText || data.message || "").trim(),
             ingredientMatches,
+            lang: this.normalizeLocaleCode(data.lang || payload.lang),
           };
         });
     }
@@ -3289,42 +3861,167 @@ function dispatchWidgetReadyEvent(widget) {
       const list = document.createElement("ul");
       products.forEach((product) => {
         const item = document.createElement("li");
+        const neededText = this.formatNeededQty(product.needed);
         if (product.cart_units === null) {
-          item.textContent = `${product.name} — kogusandmed puuduvad`;
+          item.textContent = t("recipe_summary_qty_missing", {
+            name: product.name,
+          });
           item.style.opacity = "0.6";
         } else if (product.qty_to_add === 0) {
-          const neededText = this.formatNeededQty(product.needed);
-          item.textContent = `✓ ${product.name} — ${neededText}${product.unit} (juba korvis)`;
+          item.textContent = t("recipe_summary_already_in_cart", {
+            name: product.name,
+            needed: neededText,
+            unit: product.unit || "",
+          });
           item.style.opacity = "0.65";
         } else {
-          const neededText = this.formatNeededQty(product.needed);
-          const addText = product.already_in_cart > 0
-            ? ` (+${product.qty_to_add} tk, korvis juba ${product.already_in_cart})`
-            : ` (korvi: ${product.qty_to_add} tk)`;
-          item.textContent = `${product.name} — ${neededText}${product.unit}${addText}`;
+          item.textContent =
+            product.already_in_cart > 0
+              ? t("recipe_summary_add_existing", {
+                  name: product.name,
+                  needed: neededText,
+                  unit: product.unit || "",
+                  qty: product.qty_to_add,
+                  in_cart: product.already_in_cart,
+                })
+              : t("recipe_summary_add_to_cart", {
+                  name: product.name,
+                  needed: neededText,
+                  unit: product.unit || "",
+                  qty: product.qty_to_add,
+                });
         }
         list.appendChild(item);
       });
       containerEl.appendChild(list);
     }
 
-    showRecipePreviewConfirmation(recipe) {
-      if (!this.messagesEl) return;
-      const displayLabel = this.getRecipeDisplayLabel(recipe);
-      const initialServings =
-        Number(recipe && recipe.baseServings) || this.defaultServings;
-      let targetServings = initialServings;
-      let baseServings = initialServings;
-      let previewProducts = [];
-      let previewReady = false;
-      let previewCartItems = [];
-      let guideCopyText = "";
-      let rawAssistantText = "";
-      let ingredientMatchesCache = [];
+    ensureRecipeConfirmEntryLocale(entry, lang) {
+      if (!entry || entry.type !== "recipe_confirm") {
+        return Promise.resolve(null);
+      }
+      const normalized = this.normalizeLocaleCode(lang);
+      const payload = isObject(entry.payload) ? entry.payload : {};
+      payload.previewByLang = isObject(payload.previewByLang)
+        ? payload.previewByLang
+        : {};
+      payload.previewErrorByLang = isObject(payload.previewErrorByLang)
+        ? payload.previewErrorByLang
+        : {};
+      payload.loadingByLang = isObject(payload.loadingByLang)
+        ? payload.loadingByLang
+        : {};
+
+      if (payload.previewByLang[normalized]) {
+        return Promise.resolve(payload.previewByLang[normalized]);
+      }
+      if (payload.loadingByLang[normalized]) {
+        return payload.loadingByLang[normalized];
+      }
+
+      const previewPromise = this.fetchRecipePreview(
+        payload.recipe || {},
+        payload.targetServings || payload.baseServings || this.defaultServings,
+        normalized
+      )
+        .then((result) => {
+          const preview = {
+            assistantText: String(result.assistantText || "").trim(),
+            ingredientMatches: Array.isArray(result.ingredientMatches)
+              ? result.ingredientMatches
+              : [],
+            products: Array.isArray(result.products) ? result.products : [],
+            baseServings:
+              Number(result.baseServings) ||
+              Number(payload.baseServings) ||
+              this.defaultServings,
+            lang: this.normalizeLocaleCode(result.lang || normalized),
+          };
+          payload.baseServings = preview.baseServings;
+          payload.previewByLang[normalized] = preview;
+          delete payload.previewErrorByLang[normalized];
+          return preview;
+        })
+        .catch((error) => {
+          payload.previewErrorByLang[normalized] =
+            (error && error.message) || t("preview_error");
+          throw error;
+        })
+        .finally(() => {
+          delete payload.loadingByLang[normalized];
+        });
+
+      payload.loadingByLang[normalized] = previewPromise;
+      return previewPromise;
+    }
+
+    ensureRecipeConfirmEntriesLocale(lang) {
+      const entries = this.chatEntries.filter(
+        (entry) => entry && entry.type === "recipe_confirm"
+      );
+      return Promise.all(
+        entries.map((entry) =>
+          this.ensureRecipeConfirmEntryLocale(entry, lang).catch((error) => {
+            if (this.debug) {
+              console.warn("[GreenestWidget] recipe preview translation failed", error);
+            }
+            return null;
+          })
+        )
+      );
+    }
+
+    renderRecipeConfirmEntry(entry) {
+      const payload = isObject(entry.payload) ? entry.payload : {};
+      const recipe = isObject(payload.recipe) ? payload.recipe : {};
+      const displayLabel = String(payload.displayLabel || recipe.label || "").trim();
+      const activeLang = this.normalizeLocaleCode(ACTIVE_LOCALE);
+      const previewByLang = isObject(payload.previewByLang) ? payload.previewByLang : {};
+      const previewErrorByLang = isObject(payload.previewErrorByLang)
+        ? payload.previewErrorByLang
+        : {};
+      const loadingByLang = isObject(payload.loadingByLang) ? payload.loadingByLang : {};
+      const preview = previewByLang[activeLang] || null;
+      const previewError = String(previewErrorByLang[activeLang] || "").trim();
+      const isLoading = !!loadingByLang[activeLang];
+      const baseServings =
+        Number((preview || {}).baseServings || payload.baseServings) ||
+        this.defaultServings;
+      const targetServings =
+        Number(payload.targetServings || baseServings || this.defaultServings) ||
+        this.defaultServings;
+      const previewProducts = Array.isArray((preview || {}).products)
+        ? preview.products
+        : [];
+      const ingredientMatches = Array.isArray((preview || {}).ingredientMatches)
+        ? preview.ingredientMatches
+        : [];
+      const rawAssistantText = String((preview || {}).assistantText || "").trim();
+      const scaledText = rawAssistantText
+        ? this.buildScaledAssistantText(
+            rawAssistantText,
+            ingredientMatches,
+            baseServings,
+            targetServings
+          )
+        : "";
+      const previewCartItems = preview
+        ? this.computeRecipeCartItems(previewProducts, baseServings, targetServings)
+        : [];
+      const hasAddable = previewCartItems.some(
+        (item) => item.qty_to_add !== null && item.qty_to_add > 0
+      );
+
+      if (!preview && !previewError && !isLoading) {
+        this.ensureRecipeConfirmEntryLocale(entry, activeLang)
+          .then(() => this.renderChatEntries())
+          .catch(() => this.renderChatEntries());
+      }
 
       const wrapper = document.createElement("div");
       wrapper.className = "greenest-message assistant";
       wrapper.dataset.recipeConfirm = "1";
+      wrapper.dataset.entryId = entry.id;
       const bubble = document.createElement("div");
       bubble.className = "greenest-bubble assistant";
 
@@ -3335,13 +4032,41 @@ function dispatchWidgetReadyEvent(widget) {
 
       const recipeGuide = document.createElement("div");
       recipeGuide.className = "greenest-confirm-guide";
+      if (scaledText) {
+        recipeGuide.appendChild(this.renderAssistantContent(scaledText));
+      }
       bubble.appendChild(recipeGuide);
 
       const copyGuideBtn = document.createElement("button");
       copyGuideBtn.type = "button";
       copyGuideBtn.className = "greenest-confirm-copy";
       copyGuideBtn.textContent = t("confirm_copy_guide_btn");
-      copyGuideBtn.hidden = true;
+      copyGuideBtn.hidden = !scaledText;
+      copyGuideBtn.addEventListener("click", () => {
+        const textToCopy = String(scaledText || recipeGuide.textContent || "").trim();
+        if (!textToCopy) return;
+        const defaultLabel = t("confirm_copy_guide_btn");
+        copyGuideBtn.disabled = true;
+        this.copyTextToClipboard(textToCopy)
+          .then(() => {
+            copyGuideBtn.textContent = t("confirm_copy_done");
+            this.trackEvent("guide_text_copied", {
+              assisted: 1,
+              reason: "recipe_bank",
+              recipe_id: recipe.id,
+              recipe_label: recipe.label,
+            });
+          })
+          .catch(() => {
+            copyGuideBtn.textContent = t("confirm_copy_failed");
+          })
+          .finally(() => {
+            window.setTimeout(() => {
+              copyGuideBtn.textContent = defaultLabel;
+              copyGuideBtn.disabled = false;
+            }, 1400);
+          });
+      });
       bubble.appendChild(copyGuideBtn);
 
       const servingsRow = document.createElement("div");
@@ -3352,15 +4077,18 @@ function dispatchWidgetReadyEvent(widget) {
 
       const servingsControls = document.createElement("div");
       servingsControls.className = "greenest-servings-controls";
-      const chipValues = [2, 4, 6];
-      const chips = chipValues.map((value) => {
+      [2, 4, 6].forEach((value) => {
         const chip = document.createElement("button");
         chip.type = "button";
         chip.className = "greenest-servings-chip";
         chip.textContent = String(value);
         chip.dataset.value = String(value);
+        chip.classList.toggle("is-active", value === targetServings);
+        chip.addEventListener("click", () => {
+          payload.targetServings = value;
+          this.renderChatEntries();
+        });
         servingsControls.appendChild(chip);
-        return chip;
       });
 
       const servingsInput = document.createElement("input");
@@ -3369,23 +4097,52 @@ function dispatchWidgetReadyEvent(widget) {
       servingsInput.min = "1";
       servingsInput.step = "1";
       servingsInput.value = String(targetServings);
+      servingsInput.addEventListener("change", () => {
+        const next = Number(servingsInput.value);
+        if (!Number.isFinite(next) || next <= 0) return;
+        payload.targetServings = next;
+        this.renderChatEntries();
+      });
       servingsControls.appendChild(servingsInput);
       servingsRow.appendChild(servingsControls);
       bubble.appendChild(servingsRow);
 
       const status = document.createElement("div");
       status.className = "greenest-confirm-status";
-      status.textContent = t("preview_loading");
+      if (!preview && !previewError) {
+        status.textContent = t("preview_loading");
+      } else if (previewError) {
+        status.textContent = t("preview_error");
+        const retry = document.createElement("button");
+        retry.type = "button";
+        retry.className = "greenest-confirm-retry";
+        retry.textContent = t("preview_retry");
+        retry.addEventListener("click", () => {
+          delete payload.previewErrorByLang[activeLang];
+          delete payload.previewByLang[activeLang];
+          this.ensureRecipeConfirmEntryLocale(entry, activeLang)
+            .then(() => this.renderChatEntries())
+            .catch(() => this.renderChatEntries());
+          this.renderChatEntries();
+        });
+        status.appendChild(document.createTextNode(" "));
+        status.appendChild(retry);
+      } else {
+        status.textContent = "";
+      }
       bubble.appendChild(status);
 
       const productsContainer = document.createElement("div");
       productsContainer.className = "greenest-confirm-products";
+      if (previewCartItems.length) {
+        this.renderProductsSummary(productsContainer, previewCartItems);
+      }
       bubble.appendChild(productsContainer);
 
       const productsNote = document.createElement("div");
       productsNote.className = "greenest-confirm-note";
       productsNote.textContent = t("confirm_products_note");
-      productsNote.hidden = true;
+      productsNote.hidden = previewCartItems.length === 0;
       bubble.appendChild(productsNote);
 
       const actions = document.createElement("div");
@@ -3395,39 +4152,9 @@ function dispatchWidgetReadyEvent(widget) {
       confirmBtn.type = "button";
       confirmBtn.className = "greenest-confirm-primary";
       confirmBtn.textContent = t("confirm_add_btn");
-      confirmBtn.disabled = true;
-
-      const cancelBtn = document.createElement("button");
-      cancelBtn.type = "button";
-      cancelBtn.className = "greenest-confirm-secondary";
-      cancelBtn.textContent = t("confirm_cancel_btn");
-
-      const guideBtn = document.createElement("button");
-      guideBtn.type = "button";
-      guideBtn.className = "greenest-confirm-secondary";
-      guideBtn.textContent = "Vaata juhendit";
-      guideBtn.addEventListener("click", () => {
-        recipeGuide.scrollIntoView({ behavior: "smooth", block: "nearest" });
-      });
-
-      actions.appendChild(confirmBtn);
-      actions.appendChild(cancelBtn);
-      actions.appendChild(guideBtn);
-      bubble.appendChild(actions);
-      wrapper.appendChild(bubble);
-      this.messagesEl.appendChild(wrapper);
-      this.scrollMessages();
-
-      this.trackEvent("cart_add_confirm_shown", {
-        assisted: 1,
-        reason: "recipe_bank",
-        recipe_id: recipe.id,
-        recipe_label: recipe.label,
-      });
-
+      confirmBtn.disabled = !preview || !hasAddable;
       confirmBtn.addEventListener("click", () => {
         confirmBtn.disabled = true;
-        cancelBtn.disabled = true;
         const cartItems = previewCartItems.filter(
           (item) => item.qty_to_add !== null && item.qty_to_add > 0
         );
@@ -3465,6 +4192,10 @@ function dispatchWidgetReadyEvent(widget) {
         });
       });
 
+      const cancelBtn = document.createElement("button");
+      cancelBtn.type = "button";
+      cancelBtn.className = "greenest-confirm-secondary";
+      cancelBtn.textContent = t("confirm_cancel_btn");
       cancelBtn.addEventListener("click", () => {
         confirmBtn.disabled = true;
         cancelBtn.disabled = true;
@@ -3474,134 +4205,65 @@ function dispatchWidgetReadyEvent(widget) {
           recipe_id: recipe.id,
           recipe_label: recipe.label,
         });
-        this.appendMessage("assistant", t("confirm_cancelled_message"));
-      });
-
-      copyGuideBtn.addEventListener("click", () => {
-        const textToCopy = String(guideCopyText || recipeGuide.textContent || "").trim();
-        if (!textToCopy) return;
-        const defaultLabel = t("confirm_copy_guide_btn");
-        copyGuideBtn.disabled = true;
-        this.copyTextToClipboard(textToCopy)
-          .then(() => {
-            copyGuideBtn.textContent = t("confirm_copy_done");
-            this.trackEvent("guide_text_copied", {
-              assisted: 1,
-              reason: "recipe_bank",
-              recipe_id: recipe.id,
-              recipe_label: recipe.label,
-            });
+        this.appendChatEntry(
+          this.createChatEntry("assistant_text", {
+            sourceLocale: ACTIVE_LOCALE,
+            text: t("confirm_cancelled_message"),
           })
-          .catch(() => {
-            copyGuideBtn.textContent = t("confirm_copy_failed");
-          })
-          .finally(() => {
-            window.setTimeout(() => {
-              copyGuideBtn.textContent = defaultLabel;
-              copyGuideBtn.disabled = false;
-            }, 1400);
-          });
-      });
-
-      const updateChipStates = () => {
-        chips.forEach((chip) => {
-          const value = Number(chip.dataset.value);
-          chip.classList.toggle("is-active", value === targetServings);
-        });
-      };
-
-      const updateProductsList = () => {
-        if (!previewReady) return;
-        previewCartItems = this.computeRecipeCartItems(
-          previewProducts,
-          baseServings,
-          targetServings
         );
-        this.renderProductsSummary(productsContainer, previewCartItems);
-        productsNote.hidden = previewCartItems.length === 0;
-        const hasAddable = previewCartItems.some(
-          (item) => item.qty_to_add !== null && item.qty_to_add > 0
-        );
-        confirmBtn.disabled = !hasAddable;
-      };
-
-      const setTargetServings = (value) => {
-        const next = Number(value);
-        if (!Number.isFinite(next) || next <= 0) return;
-        targetServings = next;
-        servingsInput.value = String(targetServings);
-        updateChipStates();
-        updateProductsList();
-        if (previewReady && rawAssistantText) {
-          const scaledText = this.buildScaledAssistantText(
-            rawAssistantText,
-            ingredientMatchesCache,
-            baseServings,
-            targetServings
-          );
-          recipeGuide.innerHTML = "";
-          recipeGuide.appendChild(this.renderAssistantContent(scaledText));
-          guideCopyText = scaledText;
-          copyGuideBtn.hidden = !scaledText;
-        }
-      };
-
-      chips.forEach((chip) => {
-        chip.addEventListener("click", () => {
-          setTargetServings(Number(chip.dataset.value));
-        });
       });
 
-      servingsInput.addEventListener("change", () => {
-        setTargetServings(Number(servingsInput.value));
+      const guideBtn = document.createElement("button");
+      guideBtn.type = "button";
+      guideBtn.className = "greenest-confirm-secondary";
+      guideBtn.textContent = t("confirm_view_guide_btn");
+      guideBtn.addEventListener("click", () => {
+        recipeGuide.scrollIntoView({ behavior: "smooth", block: "nearest" });
       });
 
-      updateChipStates();
+      actions.appendChild(confirmBtn);
+      actions.appendChild(cancelBtn);
+      actions.appendChild(guideBtn);
+      bubble.appendChild(actions);
+      wrapper.appendChild(bubble);
+      return wrapper;
+    }
 
-      const loadPreview = () => {
-        status.textContent = t("preview_loading");
-        confirmBtn.disabled = true;
-        previewReady = false;
-        productsNote.hidden = true;
-        this.fetchRecipePreview(recipe, targetServings)
-          .then((result) => {
-            previewProducts = Array.isArray(result.products) ? result.products : [];
-            baseServings =
-              Number(result.baseServings) || baseServings || this.defaultServings;
-            rawAssistantText = String(result.assistantText || "").trim();
-            ingredientMatchesCache = Array.isArray(result.ingredientMatches) ? result.ingredientMatches : [];
-            guideCopyText = rawAssistantText;
-            if (rawAssistantText) {
-              recipeGuide.innerHTML = "";
-              recipeGuide.appendChild(this.renderAssistantContent(rawAssistantText));
-            }
-            copyGuideBtn.hidden = !guideCopyText;
-            previewReady = true;
-            status.textContent = "";
-            updateProductsList();
-          })
-          .catch((error) => {
-            console.error(error);
-            previewReady = false;
-            confirmBtn.disabled = true;
-            productsNote.hidden = true;
-            guideCopyText = "";
-            copyGuideBtn.hidden = true;
-            const retry = document.createElement("button");
-            retry.type = "button";
-            retry.className = "greenest-confirm-retry";
-            retry.textContent = t("preview_retry");
-            retry.addEventListener("click", () => {
-              status.innerHTML = "";
-              loadPreview();
-            });
-            status.innerHTML = "";
-            status.appendChild(document.createTextNode(t("preview_error")));
-            status.appendChild(retry);
-          });
-      };
+    showRecipePreviewConfirmation(recipe) {
+      const displayLabel = this.getRecipeDisplayLabel(recipe);
+      const initialServings =
+        Number(recipe && recipe.baseServings) || this.defaultServings;
+      const entry = this.appendChatEntry(
+        this.createChatEntry("recipe_confirm", {
+          sourceLocale: ACTIVE_LOCALE,
+          payload: {
+            recipe: {
+              id: recipe.id,
+              label: recipe.label,
+              baseServings: initialServings,
+            },
+            displayLabel,
+            targetServings: initialServings,
+            baseServings: initialServings,
+            previewByLang: {},
+            previewErrorByLang: {},
+            loadingByLang: {},
+          },
+        })
+      );
 
-      loadPreview();
+      this.trackEvent("cart_add_confirm_shown", {
+        assisted: 1,
+        reason: "recipe_bank",
+        recipe_id: recipe.id,
+        recipe_label: recipe.label,
+      });
+
+      this.ensureRecipeConfirmEntryLocale(entry, ACTIVE_LOCALE)
+        .then(() => this.renderChatEntries())
+        .catch(() => this.renderChatEntries());
+
+      return entry;
     }
 
     copyTextToClipboard(text) {
@@ -4410,12 +5072,14 @@ function dispatchWidgetReadyEvent(widget) {
       const text = document.createElement("span");
       text.className = "greenest-cart-banner-text";
       text.textContent = t("cart_banner_text", { count: 0 });
+      this.cartBannerTextEl = text;
       content.appendChild(text);
 
       const link = document.createElement("a");
       link.className = "greenest-cart-banner-link";
       link.textContent = t("cart_banner_cta");
       link.href = "#";
+      this.cartBannerLinkEl = link;
       link.addEventListener("click", (event) => {
         event.preventDefault();
         this.handleCartBannerClick();
@@ -4707,31 +5371,50 @@ function dispatchWidgetReadyEvent(widget) {
     }
 
     hasSystemMessage(type, sig) {
-      if (!this.messagesEl) return false;
-      return Boolean(
-        this.messagesEl.querySelector(
-          `.greenest-message[data-system-type="${type}"][data-cart-sig="${sig}"]`
-        )
-      );
+      if (type !== "cart_recipe_candidates") return false;
+      return Boolean(this.getSystemChatEntry("system_cart_candidates", sig));
     }
 
     getSystemMessageEl(type, sig) {
-      if (!this.messagesEl) return null;
-      return this.messagesEl.querySelector(
-        `.greenest-message[data-system-type="${type}"][data-cart-sig="${sig}"]`
-      );
+      if (type !== "cart_recipe_candidates") return null;
+      return this.getSystemChatEntry("system_cart_candidates", sig);
     }
 
     injectSystemMessage(type, payload, options = {}) {
-      if (!this.messagesEl || !type) return;
+      if (!type) return null;
       const sig = options.sig || "";
-      if (sig && this.hasSystemMessage(type, sig)) return;
+      if (sig && this.hasSystemMessage(type, sig)) return null;
       if (type !== "cart_recipe_candidates") return;
 
-      const candidates = Array.isArray(payload) ? payload : [];
+      return this.appendChatEntry(
+        this.createChatEntry("system_cart_candidates", {
+          sourceLocale: ACTIVE_LOCALE,
+          payload: {
+            sig,
+            candidates: Array.isArray(payload) ? payload.slice() : [],
+            loading: !!options.loading,
+          },
+        })
+      );
+    }
+
+    updateCartCandidatesMessage(sig, candidates) {
+      const entry = this.getSystemChatEntry("system_cart_candidates", sig);
+      if (!entry) return;
+      entry.payload.candidates = Array.isArray(candidates) ? candidates.slice() : [];
+      entry.payload.loading = false;
+      this.renderChatEntries();
+    }
+
+    renderSystemCartCandidatesEntry(entry) {
+      const payload = isObject(entry.payload) ? entry.payload : {};
+      const sig = String(payload.sig || "");
+      const candidates = Array.isArray(payload.candidates) ? payload.candidates : [];
+
       const wrapper = document.createElement("div");
       wrapper.className = "greenest-message assistant greenest-system-message";
-      wrapper.dataset.systemType = type;
+      wrapper.dataset.systemType = "cart_recipe_candidates";
+      wrapper.dataset.entryId = entry.id;
       if (sig) wrapper.dataset.cartSig = sig;
 
       const bubble = document.createElement("div");
@@ -4739,10 +5422,10 @@ function dispatchWidgetReadyEvent(widget) {
 
       const title = document.createElement("div");
       title.className = "greenest-system-title";
-      title.textContent = "Sinu ostukorvi järgi";
+      title.textContent = t("system_cart_title");
       bubble.appendChild(title);
 
-      if (options.loading) {
+      if (payload.loading) {
         const loading = document.createElement("div");
         loading.className = "greenest-system-loading";
         loading.textContent = t("cart_candidates_loading");
@@ -4755,26 +5438,7 @@ function dispatchWidgetReadyEvent(widget) {
       }
 
       wrapper.appendChild(bubble);
-      this.messagesEl.appendChild(wrapper);
-      this.scrollMessages();
-    }
-
-    updateCartCandidatesMessage(sig, candidates) {
-      const wrapper = this.getSystemMessageEl("cart_recipe_candidates", sig);
-      if (!wrapper) return;
-      const bubble = wrapper.querySelector(".greenest-bubble");
-      if (!bubble) return;
-      const loading = bubble.querySelector(".greenest-system-loading");
-      if (loading) loading.remove();
-      let list = bubble.querySelector(".greenest-system-recipe-list");
-      if (!list) {
-        list = document.createElement("div");
-        list.className = "greenest-system-recipe-list";
-        bubble.appendChild(list);
-      }
-      list.innerHTML = "";
-      this._renderRecipeCandidateCards(list, Array.isArray(candidates) ? candidates : [], sig);
-      this.scrollMessages();
+      return wrapper;
     }
 
     _renderRecipeCandidateCards(list, candidates, sig) {
@@ -4782,7 +5446,9 @@ function dispatchWidgetReadyEvent(widget) {
         const card = document.createElement("button");
         card.type = "button";
         card.className = "greenest-system-recipe-card";
-        const name = String(candidate.recipe_name || candidate.recipeName || "Retsept");
+        const name = String(
+          candidate.recipe_name || candidate.recipeName || t("recipe_fallback_title", { count: 1 })
+        );
         const matchCount = Number(candidate.match_count || 0);
         const total = Number(candidate.total_ingredients || 0);
 
@@ -4794,7 +5460,10 @@ function dispatchWidgetReadyEvent(widget) {
         if (matchCount > 0 || total > 0) {
           const meta = document.createElement("div");
           meta.className = "greenest-system-recipe-meta";
-          meta.textContent = `${matchCount}/${total} koostisosa juba korvis`;
+          meta.textContent = t("system_recipe_meta", {
+            match: matchCount,
+            total: total,
+          });
           card.appendChild(meta);
         }
 
