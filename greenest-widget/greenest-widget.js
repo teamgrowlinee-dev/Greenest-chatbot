@@ -2110,6 +2110,11 @@ function dispatchWidgetReadyEvent(widget) {
             userMessage: query,
             assistantMessage: assistantText,
           });
+
+          const mainProducts = Array.isArray(data.mainProducts) ? data.mainProducts : [];
+          if (mainProducts.length > 0) {
+            this.appendShoppingProductCards(mainProducts);
+          }
         })
         .catch((error) => {
           console.error(error);
@@ -2166,6 +2171,88 @@ function dispatchWidgetReadyEvent(widget) {
     scrollMessages() {
       if (!this.messagesEl) return;
       this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+    }
+
+    appendShoppingProductCards(products) {
+      if (!this.messagesEl || !products.length) return;
+      const wrapper = document.createElement("div");
+      wrapper.className = "greenest-message assistant";
+      const bubble = document.createElement("div");
+      bubble.className = "greenest-bubble assistant";
+      const grid = document.createElement("div");
+      grid.className = "greenest-shopping-grid";
+      products.forEach((product) => {
+        const id = String(product.product_id || product.productId || product.id || product.sku || "").trim();
+        if (!id) return;
+        const name = product.name || product.title || product.productName || "Toode";
+        const price = Number(product.price || 0);
+        const isAvailable = product.isAvailable !== false;
+        const imageUrl = product.imageUrl || product.image_url || "";
+        const productUrl = product.productUrl || product.product_url || "";
+
+        const card = document.createElement("div");
+        card.className = "greenest-shopping-card";
+
+        if (imageUrl) {
+          const img = document.createElement("img");
+          img.className = "greenest-shopping-img";
+          img.src = imageUrl;
+          img.alt = name;
+          img.loading = "lazy";
+          card.appendChild(img);
+        }
+
+        const info = document.createElement("div");
+        info.className = "greenest-shopping-info";
+
+        const nameEl = document.createElement("div");
+        nameEl.className = "greenest-shopping-name";
+        if (productUrl) {
+          const link = document.createElement("a");
+          link.href = productUrl;
+          link.target = "_blank";
+          link.rel = "noopener";
+          link.textContent = name;
+          nameEl.appendChild(link);
+        } else {
+          nameEl.textContent = name;
+        }
+        info.appendChild(nameEl);
+
+        const priceEl = document.createElement("div");
+        priceEl.className = "greenest-shopping-price";
+        priceEl.textContent = price > 0 ? this.formatPrice(price) : "";
+        info.appendChild(priceEl);
+
+        const stockEl = document.createElement("div");
+        stockEl.className = "greenest-shopping-stock" + (isAvailable ? " in-stock" : " out-of-stock");
+        stockEl.textContent = isAvailable ? "Laos" : "Laost otsas";
+        info.appendChild(stockEl);
+
+        card.appendChild(info);
+
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "greenest-shopping-add-btn";
+        btn.textContent = "Lisa korvi";
+        btn.disabled = !isAvailable;
+        btn.addEventListener("click", () => {
+          const added = this.addProductsToCart([{ ...product, qty: 1 }]);
+          if (added > 0) {
+            this.notifyCartAddition(added);
+            this.trackEvent("cart_add", { assisted: 1, reason: "shopping_card", items_added: added, product_id: id });
+            btn.textContent = "Lisatud ✓";
+            btn.disabled = true;
+          }
+        });
+        card.appendChild(btn);
+
+        grid.appendChild(card);
+      });
+      bubble.appendChild(grid);
+      wrapper.appendChild(bubble);
+      this.messagesEl.appendChild(wrapper);
+      this.scrollMessages();
     }
 
     notifyCartAddition(count) {
