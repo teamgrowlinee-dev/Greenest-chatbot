@@ -52,7 +52,7 @@ app.get("/widget/loader.js", (_req, res) => {
   // Inject CSS
   var link = document.createElement("link");
   link.rel = "stylesheet";
-  link.href = "${RENDER_URL}/widget/greenest-widget.css";
+  link.href = "${RENDER_URL}/widget/greenest-widget.css?v=" + Date.now();
   document.head.appendChild(link);
 
   // Inject widget JS

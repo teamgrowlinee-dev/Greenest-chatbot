@@ -727,96 +727,96 @@
 }
 
 .greenest-shopping-card {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  grid-template-rows: auto auto;
-  gap: 4px 10px;
-  border: 1px solid var(--greenest-border);
-  border-radius: 12px;
-  padding: 10px 12px;
-  background: rgba(255, 255, 255, 0.03);
-  align-items: center;
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 10px !important;
+  border: 1px solid var(--greenest-border) !important;
+  border-radius: 12px !important;
+  padding: 10px 12px !important;
+  background: rgba(255, 255, 255, 0.03) !important;
+  box-sizing: border-box !important;
 }
 
 .greenest-shopping-img {
-  display: none;
+  display: none !important;
 }
 
 .greenest-shopping-info {
-  grid-column: 1;
-  grid-row: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
+  flex: 1 1 0 !important;
+  min-width: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 2px !important;
 }
 
 .greenest-shopping-name {
-  font-size: 0.88rem;
-  font-weight: 600;
-  color: var(--greenest-text);
-  line-height: 1.3;
+  font-size: 0.88rem !important;
+  font-weight: 600 !important;
+  color: var(--greenest-text) !important;
+  line-height: 1.3 !important;
+  word-break: break-word !important;
 }
 
 .greenest-shopping-name a {
-  color: var(--greenest-text);
-  text-decoration: none;
+  color: var(--greenest-text) !important;
+  text-decoration: none !important;
 }
 
 .greenest-shopping-name a:hover {
-  text-decoration: underline;
+  text-decoration: underline !important;
 }
 
 .greenest-shopping-price {
-  font-size: 0.9rem;
-  color: var(--greenest-green);
-  font-weight: 700;
+  font-size: 0.9rem !important;
+  color: var(--greenest-green) !important;
+  font-weight: 700 !important;
 }
 
 .greenest-shopping-stock {
-  font-size: 0.75rem;
+  font-size: 0.75rem !important;
 }
 
 .greenest-shopping-stock.in-stock {
-  color: var(--greenest-muted);
+  color: var(--greenest-muted) !important;
 }
 
 .greenest-shopping-stock.out-of-stock {
-  color: var(--greenest-error);
+  color: var(--greenest-error) !important;
 }
 
 .greenest-shopping-add-btn {
-  grid-column: 2;
-  grid-row: 1;
-  align-self: center;
-  flex-shrink: 0;
-  border: none;
-  border-radius: 14px;
-  padding: 0 18px;
-  height: 40px;
-  background: var(--greenest-green);
-  color: #012714;
-  font-weight: 600;
-  font-size: 0.85rem;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: transform 160ms ease, box-shadow 160ms ease;
+  flex-shrink: 0 !important;
+  border: none !important;
+  border-radius: 14px !important;
+  padding: 0 20px !important;
+  height: 48px !important;
+  background: var(--greenest-green) !important;
+  color: #012714 !important;
+  font-weight: 600 !important;
+  font-size: 1rem !important;
+  cursor: pointer !important;
+  white-space: nowrap !important;
+  transition: transform 160ms ease, box-shadow 160ms ease !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
 }
 
 .greenest-shopping-add-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+  transform: translateY(-2px) !important;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35) !important;
 }
 
 .greenest-shopping-add-btn:active {
-  transform: translateY(0) scale(0.98);
+  transform: translateY(0) scale(0.98) !important;
 }
 
 .greenest-shopping-add-btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-  transform: none;
-  box-shadow: none;
+  opacity: 0.45 !important;
+  cursor: not-allowed !important;
+  transform: none !important;
+  box-shadow: none !important;
 }
 
 .greenest-confirm-products {
