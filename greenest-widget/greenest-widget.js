@@ -5212,33 +5212,36 @@ function dispatchWidgetReadyEvent(widget) {
       const ids = new Set(
         (Array.isArray(cartProductIds) ? cartProductIds : []).map((id) => String(id || "").trim()).filter(Boolean)
       );
+      if (!ids.size) return [];
       // If recipes have product_ids (after backend redeploy), filter to matching ones only
       const recipesWithProductIds = this.recipes.filter(
         (r) => Array.isArray(r.productIds) && r.productIds.length > 0
       );
-      if (ids.size > 0 && recipesWithProductIds.length > 0) {
-        const matched = recipesWithProductIds.filter((r) =>
-          r.productIds.some((pid) => ids.has(String(pid)))
-        );
-        const source = matched.length > 0 ? matched : recipesWithProductIds;
-        return source.map((recipe) => ({
-          recipe_id: recipe.id,
-          recipe_name: recipe.label,
-          match_count: recipe.productIds.filter((pid) => ids.has(String(pid))).length,
-          total_ingredients: recipe.productIds.length,
-          base_servings: recipe.baseServings || this.defaultServings,
-          fallback: true,
-        }));
-      }
-      // No product_ids in recipe data (old backend) — return all recipes without false count
-      return this.recipes.map((recipe) => ({
-        recipe_id: recipe.id,
-        recipe_name: recipe.label,
-        match_count: 0,
-        total_ingredients: 0,
-        base_servings: recipe.baseServings || this.defaultServings,
-        fallback: true,
-      }));
+      if (!recipesWithProductIds.length) return [];
+
+      const matched = recipesWithProductIds
+        .map((recipe) => {
+          const matchCount = recipe.productIds.filter((pid) => ids.has(String(pid))).length;
+          if (!matchCount) return null;
+          return {
+            recipe_id: recipe.id,
+            recipe_name: recipe.label,
+            match_count: matchCount,
+            total_ingredients: recipe.productIds.length,
+            base_servings: recipe.baseServings || this.defaultServings,
+            fallback: true,
+          };
+        })
+        .filter(Boolean);
+
+      matched.sort((a, b) => {
+        const aRatio = a.total_ingredients ? a.match_count / a.total_ingredients : 0;
+        const bRatio = b.total_ingredients ? b.match_count / b.total_ingredients : 0;
+        if (bRatio !== aRatio) return bRatio - aRatio;
+        return b.match_count - a.match_count;
+      });
+
+      return matched;
     }
 
     updateBannerCandidates(data) {
@@ -5248,9 +5251,9 @@ function dispatchWidgetReadyEvent(widget) {
       this.lastCandidates = candidates;
       let count = candidates.length;
       if (!count && this.getCartProductIds().length > 0) {
-        // API not yet deployed — compute count from local fallback so it matches what's shown
+        // Keep banner logic aligned with the same strict fallback shown in chat.
         const fallback = this._getFallbackRecipesFromCart(this.getCartProductIds());
-        count = fallback.length || 1;
+        count = fallback.length;
       }
       this.lastCandidatesCount = count;
       if (!count && this.isCartBannerVisible()) {
@@ -5334,7 +5337,17 @@ function dispatchWidgetReadyEvent(widget) {
             let data;
             try { data = JSON.parse(text); } catch (_) { resolve([]); return; }
             if (!res.ok || data.ok === false) { resolve([]); return; }
-            const candidates = Array.isArray(data.candidates) ? data.candidates : [];
+            const candidates = Array.isArray(data.candidates)
+              ? data.candidates.filter((candidate) => {
+                  const matchCount = Number((candidate && (candidate.match_count || candidate.matchCount)) || 0);
+                  const matchedIds = Array.isArray(candidate && candidate.matched_product_ids)
+                    ? candidate.matched_product_ids
+                    : Array.isArray(candidate && candidate.matchedProductIds)
+                      ? candidate.matchedProductIds
+                      : [];
+                  return matchCount > 0 || matchedIds.length > 0;
+                })
+              : [];
             console.log("[Greenest] fetchCartRecipeCandidates API returned:", candidates.length, "candidates");
             resolve(candidates);
           })
@@ -5375,9 +5388,22 @@ function dispatchWidgetReadyEvent(widget) {
     }
 
     updateCartCandidatesMessage(sig, candidates) {
+      const normalized = Array.isArray(candidates) ? candidates.slice() : [];
+      if (!normalized.length) {
+        this.chatEntries = this.chatEntries.filter(
+          (entry) =>
+            !(
+              entry &&
+              entry.type === "system_cart_candidates" &&
+              String((entry.payload || {}).sig || "") === String(sig || "")
+            )
+        );
+        this.renderChatEntries();
+        return;
+      }
       const entry = this.getSystemChatEntry("system_cart_candidates", sig);
       if (!entry) return;
-      entry.payload.candidates = Array.isArray(candidates) ? candidates.slice() : [];
+      entry.payload.candidates = normalized;
       entry.payload.loading = false;
       this.renderChatEntries();
     }
@@ -5386,6 +5412,7 @@ function dispatchWidgetReadyEvent(widget) {
       const payload = isObject(entry.payload) ? entry.payload : {};
       const sig = String(payload.sig || "");
       const candidates = Array.isArray(payload.candidates) ? payload.candidates : [];
+      if (!payload.loading && !candidates.length) return null;
 
       const wrapper = document.createElement("div");
       wrapper.className = "greenest-message assistant greenest-system-message";

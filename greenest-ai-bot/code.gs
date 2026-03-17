@@ -38,6 +38,7 @@ var BACKEND_VERSION = 'v4.3';
 // Customer support knowledge base (sourced from greenest.ee policy pages)
 var GREENEST_SUPPORT = {
   phone: '+372 51 900 330',
+  order_phone: '+372 5663 5550',
   email: 'sales@greenest.ee',
   hours: 'E-R 08:00–16:00',
   delivery_url: 'https://greenest.ee/et/pages/kauba-kattetoimetamine',
@@ -189,7 +190,7 @@ function buildSupportLinkResponse_(intent) {
     return 'Kontaktandmed leiad siit 😊\n[Ava kontaktleht](' + GREENEST_SUPPORT.contacts_url + ')';
   }
   if (intent === 'support_order') {
-    return 'Tellimuse info leiad siit 😊\n[Ava tellimistingimused](' + GREENEST_SUPPORT.terms_url + ')';
+    return 'Tellimuse või paki staatuse kohta kõige kiirema info saamiseks helista palun ' + GREENEST_SUPPORT.order_phone + '. Aktiivset paki jälgimise süsteemi meil hetkel ei ole.';
   }
   return 'Kliendiabi info leiad siit 😊\n[Ava kontaktleht](' + GREENEST_SUPPORT.contacts_url + ')';
 }
@@ -1806,7 +1807,7 @@ function translateSupportResponse_(intent) {
   if (intent === 'support_returns') return 'You can find returns and refunds info here:\n[Open returns info](' + s.returns_url + ')';
   if (intent === 'support_payment') return 'You can find payment terms here:\n[Open payment terms](' + s.terms_url + ')';
   if (intent === 'support_contact') return 'You can find our contact details here:\n[Open contact page](' + s.contacts_url + ')';
-  if (intent === 'support_order') return 'Order-related information is here:\n[Open order terms](' + s.terms_url + ')';
+  if (intent === 'support_order') return 'For the fastest update on your order or parcel status, please call ' + s.order_phone + '. We do not currently have an active parcel tracking system.';
   return 'For support, please contact: ' + s.email;
 }
 
