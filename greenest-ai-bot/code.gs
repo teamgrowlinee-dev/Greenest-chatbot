@@ -29,7 +29,8 @@ var DEFAULT_ALLOWED_ORIGIN_URLS = [
   'https://greenest.ee/en/food-and-drinks' // ✅ baked in input
 ];
 
-var CLAUDE_MODEL = 'claude-haiku-4-5-20251001'; // Anthropic Claude Haiku – used for support & smalltalk
+var CLAUDE_MODEL = 'claude-haiku-4-5-20251001'; // Anthropic Claude Haiku – used for shopping & recipe AI steps
+var CLAUDE_SONNET_MODEL = 'claude-sonnet-4-6'; // Anthropic Claude Sonnet 4.6 – used for intent classification
 
 // Backend attribution/version
 var VENDOR_NAME = 'growlinee';
@@ -51,10 +52,7 @@ var GREENEST_SUPPORT = {
   address: 'Kurekivi tee 2, Lehmja, Rae vald, Harjumaa 75306, Estonia'
 };
 
-var GREETING_ONLY_RE = /^\s*(tere|tervist|tsau|hei|hello|hey)\s*[!,.?]*\s*$/i;
-var ACK_ONLY_RE = /^\s*(ait[aä]h|t[aä]nan|okei|ok|selge|super|lahe|vahva|j[aä]rjest|mhm|jaa|jah)\s*[!,.?]*\s*$/i;
 var SMALLTALK_RE = /(kuidas l[aä]heb|mis teed|kes sa oled|mida oskad|r[aä][aä]gi endast|small talk|lihtsalt jutustan)/i;
-var ESCALATION_RE = /(pahane|vihane|petetud|pett[au]s|fraud|chargeback|kadunud pakk|makse probleem|ei t[oö][oö]ta|solvav|kaebuse|kaevus|nõuan|nõua)/i;
 
 var SUPPORT_SHIPPING_RE = /(tarne|tarni|k[aä]ttetoimet|k[aä]tte saa|kauba katte|kuller|pakiautomaat|smartpost|shipping|kohale|saadetis|tarneaeg|tarnekulud|millal j[oõ]uab|millal saab pakk|millal tuleb pakk)/i;
 var SUPPORT_RETURNS_RE = /(tagastus|tagast|return|refund|raha tagasi|pretensioon|reklamatsioon|katki|vigane|riknenud|defekt|garantii|warranty)/i;
@@ -347,39 +345,43 @@ function callClaudeHaiku_(userMessage, faqContext) {
   }
 }
 
-// Intent classifier system prompt – returns JSON like trenniekspert
-var GREENEST_INTENT_CLASSIFIER_PROMPT = [
-  'Sa oled Greenesti vestluse intentide klassifitseerija.',
+// Intent classifier system prompt – Claude Sonnet 4.6 smart router
+var GREENEST_SONNET_CLASSIFIER_PROMPT = [
+  'Sa oled Greenesti chatboti intelligentne suunaja.',
   'Greenest on Eesti mahetoidu e-pood (toiduained, retseptid).',
   '',
-  'Tagasta AINULT JSON objekt kujul:',
-  '{"intent":"greeting|smalltalk|escalation|support_shipping|support_returns|support_payment|support_contact|support_order|recipe|shopping","confidence":0.0-1.0}',
+  'Analüüsi kasutaja sõnumit hoolikalt ja tagasta AINULT JSON:',
+  '{"intent":"...","confidence":0.0-1.0}',
   '',
-  'REEGLID:',
-  '- greeting: puhas tervitus ("tere", "hei")',
-  '- smalltalk: lühike tunnustus ("okei", "aitäh") või jutuajamine ilma küsimuseta',
-  '- escalation: vihane, pettunud, kaebuse esitamine, fraud',
-  '- support_shipping: tarne, pakk, kuller, pakiautomaat, kohaletoimetamine, "kauba kätte saamine", "millal jõuab"',
-  '- support_returns: tagastus, defekt, garantii, raha tagasi, vigane toode',
-  '- support_payment: makse, pangalink, ülekanne, arve, sooduskood',
-  '- support_contact: kontakt, telefon, e-post, tööaeg, lahtiolekuaeg',
-  '- support_order: tellimuse staatus, tellimuse number, kus mu pakk',
-  '- recipe: retsept, kuidas teha/valmistada, koostisosad, toiduvalmistamine',
-  '- shopping: toote otsimine, ostmine, soovitused, hind',
-  '- Kui kahtled support_ ja recipe/shopping vahel, eelista support_.',
-  '- Kasuta intent "recipe" ainult kui klient selgelt küsib retsepti või toiduvalmistamise kohta.',
+  'Võimalikud intendid:',
+  '- "greeting"         — tervitused, tutvumised (nt "tere", "hei", "kuidas läheb")',
+  '- "smalltalk"        — tunnustused ("okei", "aitäh"), üldküsimused mis pole pood-spetsiifilised',
+  '- "escalation"       — vihane klient, pettus, chargeback, kaebuste esitamine',
+  '- "support_shipping" — tarne, pakk, kuller, pakiautomaat, kohaletoimetamine, tarneajad ja -hinnad',
+  '- "support_returns"  — tagastus, raha tagasi, defektne/vigane toode, garantii',
+  '- "support_payment"  — makse, pangalink, pangaülekanne, arve, sooduskood',
+  '- "support_contact"  — kontakt, telefon, e-post, lahtiolekuaeg, tööaeg',
+  '- "support_order"    — tellimuse staatus, tellimuse muutmine/tühistamine, kus mu pakk',
+  '- "recipe"           — retsept, kuidas teha/valmistada, koostisosad, toiduvalmistamine',
+  '- "shopping"         — konkreetse toote otsimine, toote soovitus, ostmine, hind',
+  '',
+  'Otsusta hoolikalt. Eesti keel on keeruline — arvesta käänete ja ümberütlemistega.',
+  'Näide: "tahan gluteenivabasid küpsiseid" → shopping (mitte recipe)',
+  'Näide: "kas saan esmaspäeval tellida?" → support_shipping',
+  'Näide: "mis retsepte kaerahelbedega on?" → recipe',
+  'Tagasta ainult JSON, mitte midagi muud.',
 ].join('\n');
 
-function classifyIntentWithClaude_(query) {
+function classifyIntentWithSonnet_(query) {
   var apiKey = getScriptProp_('ANTHROPIC_API_KEY');
   if (!apiKey) return null;
 
   var payload = {
-    model: CLAUDE_MODEL,
-    max_tokens: 80,
+    model: CLAUDE_SONNET_MODEL,
+    max_tokens: 60,
     temperature: 0,
-    system: GREENEST_INTENT_CLASSIFIER_PROMPT,
-    messages: [{ role: 'user', content: 'Sõnum: ' + String(query || '').trim() + '\n\nTagasta ainult JSON.' }]
+    system: GREENEST_SONNET_CLASSIFIER_PROMPT,
+    messages: [{ role: 'user', content: 'Sõnum: ' + String(query || '').trim() }]
   };
 
   try {
@@ -406,7 +408,7 @@ function classifyIntentWithClaude_(query) {
 
     return intent;
   } catch (err) {
-    Logger.log('classifyIntentWithClaude_ error: ' + err);
+    Logger.log('classifyIntentWithSonnet_ error: ' + err);
     return null;
   }
 }
@@ -414,12 +416,6 @@ function classifyIntentWithClaude_(query) {
 function detectAssistantIntent_(query, products) {
   var q = String(query || '').toLowerCase().trim();
   if (!q) return 'smalltalk';
-
-  // Fast regex pre-filter for obvious cases (no API call needed)
-  if (ACK_ONLY_RE.test(query)) return 'smalltalk';
-  if (GREETING_ONLY_RE.test(query)) return 'greeting';
-  if (ESCALATION_RE.test(q)) return 'escalation';
-
   // Fallback for product/recipe (used when Claude is unavailable)
   return decideMode_(query, products);
 }
@@ -1738,11 +1734,11 @@ function handleAssistantQuery_(query, veganOnly, glutenFreeOnly, recipeId, lang)
     return buildRecipeResponseFromBank_(query, catalogForRecipe, veganOnly, glutenFreeOnly, recipeId, lang);
   }
 
-  // Step 1: fast regex pre-filter (no API call) for trivial cases
-  var quickIntent = detectAssistantIntent_(query, []);
+  // Step 1: Claude Sonnet 4.6 classifies intent (smart router)
+  var intent = classifyIntentWithSonnet_(query) || detectAssistantIntent_(query, []);
 
   // --- Escalation ---
-  if (quickIntent === 'escalation') {
+  if (intent === 'escalation') {
     var escText = isEn
       ? 'I understand this is frustrating. Please contact our customer support directly:\n- Email: ' + GREENEST_SUPPORT.email + '\n- Phone: ' + GREENEST_SUPPORT.phone + ' (' + GREENEST_SUPPORT.hours + ')\n\nWe\'ll get back to you as soon as possible.'
       : 'Mõistan, et olukord on ebameeldiv. Palun võta otse ühendust meie klienditoega:\n- E-post: ' + GREENEST_SUPPORT.email + '\n- Telefon: ' + GREENEST_SUPPORT.phone + ' (' + GREENEST_SUPPORT.hours + ')\n\nVastame esimesel võimalusel.';
@@ -1750,15 +1746,12 @@ function handleAssistantQuery_(query, veganOnly, glutenFreeOnly, recipeId, lang)
   }
 
   // --- Greeting ---
-  if (quickIntent === 'greeting') {
+  if (intent === 'greeting') {
     var greetText = isEn
       ? 'Hi! I\'m the Greenest assistant. I can help with recipes and answer customer support questions (shipping, returns, payment, contact). How can I help?'
       : 'Tere! Olen Greenesti assistent. Saan aidata retseptidega ja vastata klienditoe küsimustele (tarne, tagastus, makse, kontakt). Kuidas saan aidata?';
     return { mode: 'smalltalk', assistantText: greetText, mainProducts: [], upsellProducts: [], vendor: VENDOR_NAME, version: BACKEND_VERSION };
   }
-
-  // Step 2: Claude classifies intent
-  var intent = classifyIntentWithClaude_(query) || quickIntent;
 
   // --- Support intents ---
   if (String(intent).indexOf('support_') === 0) {
