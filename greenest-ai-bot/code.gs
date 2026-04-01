@@ -237,14 +237,11 @@ function buildSmalltalkFallback_(lang) {
 
 // Strict rules – mirrored from trenniekspert pattern
 var GREENEST_STRICT_RULES = [
-  'REEGLID, mida sa PEAD järgima:',
-  '1. Vasta AINULT allpool toodud poe teabe põhjal. Kui vastust pole teabes, ütle ausalt "Kahjuks ei oska sellele vastata. Kirjuta palun ' + GREENEST_SUPPORT.email + ' või helista ' + GREENEST_SUPPORT.phone + '."',
-  '2. Ära kunagi leiuta fakte, hindu, tähtaegu ega tingimusi, mida teabes pole.',
-  '3. Vasta lühidalt (1–3 lauset), sõbralikult ja konkreetselt. Kui süsteem või kasutaja määrab keele, vasta selles keeles; muidu vasta eesti keeles.',
-  '4. Ära soovita tooteid ega retsepte tekstivastuses – selleks on eraldi süsteem.',
-  '5. Kui klient on vihane või probleem on tõsine, soovita alati kirjutada ' + GREENEST_SUPPORT.email + ' või helistada ' + GREENEST_SUPPORT.phone + '.',
-  '6. Sa oled Greenesti kliendiabi assistent. Greenest (greenest.ee) on Eesti mahetoidu e-pood – müüb mahe- ja looduslikke toiduaineid.',
-  '7. Kui vastad tarne/tagastuse/makse/kontakti teemal, lisa vastuse lõppu sobiv leheviide.',
+  'Sa oled Greenesti kliendiabi assistent. Greenest (greenest.ee) on Eesti mahetoidu e-pood.',
+  'Vasta sõbralikult ja lühidalt (1-3 lauset) ainult allpool toodud poe teabe põhjal.',
+  'Kui infot pole, ütle ausalt et ei tea ja soovita kirjutada ' + GREENEST_SUPPORT.email + '.',
+  'Ära leiuta fakte. Ära soovita tooteid ega retsepte — selleks on eraldi süsteem.',
+  'Vasta eesti keeles, välja arvatud kui kasutaja kirjutab inglise keeles.',
 ].join('\n');
 
 var GREENEST_STORE_KNOWLEDGE = [
@@ -347,29 +344,14 @@ function callClaudeHaiku_(userMessage, faqContext) {
 
 // Intent classifier system prompt – Claude Sonnet 4.6 smart router
 var GREENEST_SONNET_CLASSIFIER_PROMPT = [
-  'Sa oled Greenesti chatboti intelligentne suunaja.',
-  'Greenest on Eesti mahetoidu e-pood (toiduained, retseptid).',
+  'Sa oled Greenesti chatboti suunaja. Greenest on Eesti mahetoidu e-pood.',
   '',
-  'Analüüsi kasutaja sõnumit hoolikalt ja tagasta AINULT JSON:',
-  '{"intent":"...","confidence":0.0-1.0}',
+  'Analüüsi kasutaja sõnumit ja otsusta mis on tema tegelik vajadus.',
+  'Tagasta AINULT JSON: {"intent":"...","confidence":0.0-1.0}',
   '',
-  'Võimalikud intendid:',
-  '- "greeting"         — tervitused, tutvumised (nt "tere", "hei", "kuidas läheb")',
-  '- "smalltalk"        — tunnustused ("okei", "aitäh"), üldküsimused mis pole pood-spetsiifilised',
-  '- "escalation"       — vihane klient, pettus, chargeback, kaebuste esitamine',
-  '- "support_shipping" — tarne, pakk, kuller, pakiautomaat, kohaletoimetamine, tarneajad ja -hinnad',
-  '- "support_returns"  — tagastus, raha tagasi, defektne/vigane toode, garantii',
-  '- "support_payment"  — makse, pangalink, pangaülekanne, arve, sooduskood',
-  '- "support_contact"  — kontakt, telefon, e-post, lahtiolekuaeg, tööaeg',
-  '- "support_order"    — tellimuse staatus, tellimuse muutmine/tühistamine, kus mu pakk',
-  '- "recipe"           — retsept, kuidas teha/valmistada, koostisosad, toiduvalmistamine',
-  '- "shopping"         — konkreetse toote otsimine, toote soovitus, ostmine, hind',
-  '',
-  'Otsusta hoolikalt. Eesti keel on keeruline — arvesta käänete ja ümberütlemistega.',
-  'Näide: "tahan gluteenivabasid küpsiseid" → shopping (mitte recipe)',
-  'Näide: "kas saan esmaspäeval tellida?" → support_shipping',
-  'Näide: "mis retsepte kaerahelbedega on?" → recipe',
-  'Tagasta ainult JSON, mitte midagi muud.',
+  'Võimalikud intendid: greeting, smalltalk, escalation,',
+  'support_shipping, support_returns, support_payment, support_contact, support_order,',
+  'recipe, shopping',
 ].join('\n');
 
 function classifyIntentWithSonnet_(query) {
@@ -1267,7 +1249,7 @@ function pickRecipeWithAI_(query, candidates) {
     model: CLAUDE_MODEL,
     max_tokens: 80,
     temperature: 0,
-    system: 'Sa oled Greenesti (Eesti mahetoidu e-pood) retseptisoovituse AI. Vali kliendi päringule kõige paremini sobiv retsept. Mõtle konteksti järgi — "tatrapuder" võib olla "tatratangupuder", "karri" võib olla mis tahes karri-retsept. Kui sobivat ei ole, tagasta null.',
+    system: 'Vali järgnevast nimekirjast kliendi otsingule kõige paremini sobiv retsept. Kasuta oma otsustust — arvesta sünonüüme ja konteksti. Kui sobivat pole, tagasta {"id":null}.',
     messages: [{ role: 'user', content: prompt }]
   };
 
@@ -1516,7 +1498,7 @@ function normalizeShoppingQuery_(query) {
     model: CLAUDE_MODEL,
     max_tokens: 60,
     temperature: 0,
-    system: 'Sa normaliseerid eestikeelseid tooteotsingu päringuid. Eemalda tervitused ja täitesõnad (nt "tere", "otsin", "palun", "mulle"). Teisenda käändevormid nimetavasse (nt "pähkleid"→"pähklid", "õunu"→"õun"). Paranda kirjavead. Tagasta AINULT puhastatud otsingutermin(id), midagi muud mitte.',
+    system: 'Normaliseeri eestikeelne tooteotsing. Tagasta ainult puhas otsingutermin, midagi muud mitte.',
     messages: [{ role: 'user', content: 'Päring: "' + String(query || '').trim() + '"' }]
   };
 
@@ -1564,7 +1546,7 @@ function pickShoppingProductsWithAI_(originalQuery, normalizedQuery, candidates)
     model: CLAUDE_MODEL,
     max_tokens: 120,
     temperature: 0,
-    system: 'Sa oled Greenesti (Eesti mahetoidu e-pood) tootesoovituse AI. Vali kliendi päringule täpselt sobivad tooted. Kui sobivaid tooteid ei ole, tagasta tühi loend.',
+    system: 'Vali järgnevast nimekirjast kliendi otsingule kõige paremini sobivad tooted. Kui sobivaid pole, tagasta {"ids":[]}.',
     messages: [{ role: 'user', content: prompt }]
   };
 
@@ -2085,7 +2067,7 @@ function pickCartRecipeWithAI_(cartProductNames, candidates) {
     model: CLAUDE_MODEL,
     max_tokens: 200,
     temperature: 0,
-    system: 'Sa oled Greenesti (Eesti mahetoidu e-pood) retseptisoovituse AI. Soovita ainult temaatiliselt sobivaid retsepte kliendi ostukorvi põhjal.',
+    system: 'Soovita kliendi ostukorvi põhjal kõige sobivamad retseptid. Kasuta oma otsustust.',
     messages: [{ role: 'user', content: prompt }]
   };
 
