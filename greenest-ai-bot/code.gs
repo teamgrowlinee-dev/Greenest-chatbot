@@ -2045,7 +2045,7 @@ function pickCartRecipeWithAI_(cartProductNames, candidates) {
     'Retseptid (id|nimi [koostisosad]):',
     lines.join('\n'),
     '',
-    'Vali 1-3 retsepti kus ostukorvi tooted sobivad koostisosadeks. Soovita ka siis kui ainult üks koostisosa kattub.',
+    'Vali 1-3 retsepti kus ostukorvi tooted sobivad koostisosadeks. Soovita ainult siis kui vähemalt üks koostisosa kattub ostukorvi tootega.',
     '',
     'Tagasta AINULT JSON: {"picks":[{"id":"retsepti_id","reason":"lühike põhjendus eesti keeles"}]}',
     'Kui ükski ei sobi, tagasta {"picks":[]}'
@@ -2126,11 +2126,11 @@ function buildCartRecipeCandidates_(productIds, limit) {
         aiResults.push(Object.assign({}, c, { ai_reason: aiPickIds[c.recipe_id], ai_pick: true }));
       }
     });
-    return aiResults.slice(0, Math.max(1, limit));
+    if (aiResults.length) return aiResults.slice(0, Math.max(1, limit));
   }
 
-  // Fallback if AI unavailable: return first N recipes
-  return allRecipes.slice(0, Math.max(1, limit));
+  // No AI picks — return empty (no random fallback)
+  return [];
 }
 
 /*************************************************
