@@ -2033,20 +2033,19 @@ function pickCartRecipeWithAI_(cartProductNames, candidates) {
     : '(tundmatud tooted)';
 
   var lines = candidates.map(function (c) {
-    return c.recipe_id + '|' + c.recipe_name +
-      ' (sobib ' + c.match_count + '/' + c.total_ingredients + ' koostisosaga)';
+    var ingStr = Array.isArray(c.ingredients) && c.ingredients.length
+      ? ' [' + c.ingredients.join(', ') + ']'
+      : '';
+    return c.recipe_id + '|' + c.recipe_name + ingStr;
   });
 
   var prompt = [
     'Kliendi ostukorvis on: ' + cartList,
     '',
-    'Kandidaatretseptid (id|nimi|sobivus):',
+    'Retseptid (id|nimi [koostisosad]):',
     lines.join('\n'),
     '',
-    'Vali 1-3 kõige mõistlikumat retseptisoovitust arvestades:',
-    '- Kas retsept on temaatiliselt seotud ostukorvi toodetega?',
-    '- Kas retseptil on juba piisavalt koostisosi kaetud?',
-    '- Ära soovita kui sobivus on alla 20% (väga vähe kattuvust)',
+    'Vali 1-3 retsepti kus ostukorvi tooted sobivad koostisosadeks. Soovita ka siis kui ainult üks koostisosa kattub.',
     '',
     'Tagasta AINULT JSON: {"picks":[{"id":"retsepti_id","reason":"lühike põhjendus eesti keeles"}]}',
     'Kui ükski ei sobi, tagasta {"picks":[]}'
@@ -2054,9 +2053,9 @@ function pickCartRecipeWithAI_(cartProductNames, candidates) {
 
   var payload = {
     model: CLAUDE_MODEL,
-    max_tokens: 200,
+    max_tokens: 400,
     temperature: 0,
-    system: 'Soovita kliendi ostukorvi põhjal kõige sobivamad retseptid. Kasuta oma otsustust.',
+    system: 'Soovita kliendi ostukorvi põhjal sobivaid retsepte. Soovita alati vähemalt 1 retsepti kui ostukorvis on toiduaine.',
     messages: [{ role: 'user', content: prompt }]
   };
 
@@ -2083,15 +2082,8 @@ function buildCartRecipeCandidates_(productIds, limit) {
   if (!productIds || !productIds.length) return [];
   limit = limit || 20;
 
-  var ids = {};
   var catalogAll = loadAiCatalog_();
   var productsById = indexProductsById_(catalogAll);
-  for (var i = 0; i < productIds.length; i++) {
-    var key = getCanonicalProductKeyFromId_(productIds[i], productsById);
-    if (key) ids[key] = true;
-  }
-  var wanted = Object.keys(ids);
-  if (!wanted.length) return [];
 
   // Collect cart product names for AI context
   var cartProductNames = [];
@@ -2100,16 +2092,23 @@ function buildCartRecipeCandidates_(productIds, limit) {
     if (cartKey && productsById[cartKey]) {
       var pName = String(productsById[cartKey].productName || productsById[cartKey].product_name || '').trim();
       if (pName) cartProductNames.push(pName);
+    } else {
+      // Fallback: use raw product ID so AI still gets some context
+      cartProductNames.push(String(productIds[ci]));
     }
   }
 
   var bank = loadRecipeBank_();
 
-  // Build full recipe list for AI — no ID-match pre-filter
+  // Build full recipe list for AI — include ingredient labels so AI can match by content
   var allRecipes = bank.map(function (rec) {
+    var ingredientLabels = (rec.ingredients || [])
+      .map(function (ing) { return ing.label || ''; })
+      .filter(Boolean);
     return {
       recipe_id: rec.recipe_id,
       recipe_name: rec.recipe_name || '',
+      ingredients: ingredientLabels,
       base_servings: rec.default_servings || null,
       matched_product_ids: []
     };
