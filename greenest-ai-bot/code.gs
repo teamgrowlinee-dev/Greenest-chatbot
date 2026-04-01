@@ -1297,7 +1297,7 @@ function selectRecipeFromBank_(query, recipeBank, veganOnly, glutenFreeOnly, req
     }
   }
 
-  // Try AI-based selection first (Claude understands context and synonyms)
+  // AI sees the full recipe bank — no keyword pre-filter
   var aiPickedId = pickRecipeWithAI_(query, candidates);
   if (aiPickedId) {
     for (var ai = 0; ai < candidates.length; ai++) {
@@ -1307,25 +1307,10 @@ function selectRecipeFromBank_(query, recipeBank, veganOnly, glutenFreeOnly, req
     }
   }
 
-  // Fallback: keyword scoring if AI unavailable or returned null
-  var bestScore = -1;
-  var best = [];
-
-  for (var i = 0; i < candidates.length; i++) {
-    var rec = candidates[i];
-    var s = scoreRecipeBankRow_(rec, query);
-
-    if (s > bestScore) { bestScore = s; best = [rec]; }
-    else if (s === bestScore) { best.push(rec); }
-  }
-
-  if (bestScore <= 0) {
-    var pool = candidates.filter(function (r) { return !!r.random_pool; });
-    if (!pool.length) pool = candidates;
-    return pool[Math.floor(Math.random() * pool.length)];
-  }
-
-  return best[Math.floor(Math.random() * best.length)];
+  // Fallback: only if AI unavailable (API error), pick random from pool
+  var pool = candidates.filter(function (r) { return !!r.random_pool; });
+  if (!pool.length) pool = candidates;
+  return pool[Math.floor(Math.random() * pool.length)];
 }
 
 function mergeIngredientMetaIntoProduct_(wrapped, ing) {
@@ -2119,66 +2104,34 @@ function buildCartRecipeCandidates_(productIds, limit) {
   }
 
   var bank = loadRecipeBank_();
-  var candidates = [];
 
-  for (var r = 0; r < bank.length; r++) {
-    var rec = bank[r];
-    var ings = rec.ingredients || [];
-    var totalSet = {};
-    var matchedSet = {};
-
-    for (var j = 0; j < ings.length; j++) {
-      var p = getCanonicalProductKeyFromId_(ings[j].productId, productsById);
-      if (!p) continue;
-      totalSet[p] = true;
-      if (ids[p]) matchedSet[p] = true;
-    }
-
-    var matchCount = Object.keys(matchedSet).length;
-    if (!matchCount) continue;
-
-    var totalCount = Object.keys(totalSet).length;
-    var ratio = totalCount ? matchCount / totalCount : 0;
-
-    candidates.push({
+  // Build full recipe list for AI — no ID-match pre-filter
+  var allRecipes = bank.map(function (rec) {
+    return {
       recipe_id: rec.recipe_id,
       recipe_name: rec.recipe_name || '',
-      match_count: matchCount,
-      total_ingredients: totalCount,
-      match_ratio: ratio,
       base_servings: rec.default_servings || null,
-      matched_product_ids: Object.keys(matchedSet)
-    });
-  }
-
-  candidates.sort(function (a, b) {
-    if (b.match_ratio !== a.match_ratio) return b.match_ratio - a.match_ratio;
-    return b.match_count - a.match_count;
+      matched_product_ids: []
+    };
   });
 
-  var topCandidates = candidates.slice(0, Math.max(10, limit * 2));
-
-  // AI picks the most relevant recipes from top candidates
-  var aiPicks = pickCartRecipeWithAI_(cartProductNames, topCandidates);
+  // AI sees full recipe bank and cart product names
+  var aiPicks = pickCartRecipeWithAI_(cartProductNames, allRecipes);
   if (aiPicks && aiPicks.length) {
     var aiPickIds = {};
     aiPicks.forEach(function (pick) { aiPickIds[String(pick.id || '').trim()] = pick.reason || ''; });
 
-    // Return AI-selected recipes first (with reason), then remaining by ratio
     var aiResults = [];
-    var remaining = [];
-    topCandidates.forEach(function (c) {
+    allRecipes.forEach(function (c) {
       if (aiPickIds[c.recipe_id] !== undefined) {
         aiResults.push(Object.assign({}, c, { ai_reason: aiPickIds[c.recipe_id], ai_pick: true }));
-      } else {
-        remaining.push(c);
       }
     });
-    return aiResults.concat(remaining).slice(0, Math.max(1, limit));
+    return aiResults.slice(0, Math.max(1, limit));
   }
 
-  // Fallback: return rule-based sorted candidates
-  return topCandidates.slice(0, Math.max(1, limit));
+  // Fallback if AI unavailable: return first N recipes
+  return allRecipes.slice(0, Math.max(1, limit));
 }
 
 /*************************************************
