@@ -5365,7 +5365,7 @@ function dispatchWidgetReadyEvent(widget) {
                     : Array.isArray(candidate && candidate.matchedProductIds)
                       ? candidate.matchedProductIds
                       : [];
-                  return matchCount > 0 || matchedIds.length > 0;
+                  return matchCount > 0 || matchedIds.length > 0 || candidate.ai_pick === true;
                 })
               : [];
             console.log("[Greenest] fetchCartRecipeCandidates API returned:", candidates.length, "candidates");
