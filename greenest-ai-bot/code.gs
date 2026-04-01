@@ -1608,12 +1608,11 @@ function buildShoppingResponse_(query, products, lang) {
     }
   }
 
-  // AI tagastas [] — kandidaadid olemas aga ei sobi
+  // AI tagastas [] — ei leidnud sobivaid tooteid → Haiku vastab kontekstitundlikult
+  var noProductsReply = callClaudeHaikuLang_(query, null, getLangInstruction_(lang));
   return {
-    mode: 'shopping',
-    assistantText: isEn
-      ? 'I could not find products in our catalog that match "' + query + '".'
-      : 'Ei leidnud otsingule "' + query + '" sobivaid tooteid meie kataloogist.',
+    mode: 'smalltalk',
+    assistantText: noProductsReply || (isEn ? 'I could not find products matching your search. Can I help with something else?' : 'Selle otsingu jaoks ei leidnud sobivaid tooteid. Saan aidata millegi muuga?'),
     mainProducts: [],
     upsellProducts: []
   };
@@ -1832,6 +1831,11 @@ function handleAssistantQuery_(query, veganOnly, glutenFreeOnly, recipeId, lang)
     res.vendor = VENDOR_NAME;
     res.version = BACKEND_VERSION;
     return res;
+  }
+
+  if (intent === null || intent === undefined) {
+    var unknownReply = callClaudeHaikuLang_(query, null, getLangInstruction_(lang));
+    return { mode: 'smalltalk', assistantText: unknownReply || buildSmalltalkFallback_(lang).assistantText, mainProducts: [], upsellProducts: [], vendor: VENDOR_NAME, version: BACKEND_VERSION };
   }
 
   return buildRecipeResponseFromBank_(query, catalogAll, veganOnly, glutenFreeOnly, '', lang);
