@@ -1240,6 +1240,56 @@ function scoreRecipeBankRow_(rec, query) {
   return score;
 }
 
+
+function pickRecipeWithAI_(query, candidates) {
+  var apiKey = getScriptProp_('ANTHROPIC_API_KEY');
+  if (!apiKey || !candidates.length) return null;
+
+  var lines = candidates.map(function (r) {
+    var aliases = String(r.recipe_name_aliases || r.aliases || '').trim();
+    var tags = String(r.recipe_tags || r.tags || '').trim();
+    return String(r.recipe_id || '').trim() + '|' + String(r.recipe_name || '').trim() +
+           (aliases ? '|' + aliases : '') + (tags ? '|' + tags : '');
+  });
+
+  var prompt = [
+    'Kliendi otsing retsepti jaoks: "' + String(query || '').trim() + '"',
+    '',
+    'Saadaval retseptid (id|nimi|aliases|tags):',
+    lines.join('\n'),
+    '',
+    'Vali 1 kõige paremini sobiv retsept.',
+    'Kui ükski ei sobi, tagasta {"id":null}.',
+    'Tagasta AINULT JSON kujul {"id":"retsepti_id"}, mitte midagi muud.'
+  ].join('\n');
+
+  var payload = {
+    model: CLAUDE_MODEL,
+    max_tokens: 80,
+    temperature: 0,
+    system: 'Sa oled Greenesti (Eesti mahetoidu e-pood) retseptisoovituse AI. Vali kliendi päringule kõige paremini sobiv retsept. Mõtle konteksti järgi — "tatrapuder" võib olla "tatratangupuder", "karri" võib olla mis tahes karri-retsept. Kui sobivat ei ole, tagasta null.',
+    messages: [{ role: 'user', content: prompt }]
+  };
+
+  try {
+    var response = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
+      method: 'post',
+      contentType: 'application/json',
+      headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true
+    });
+    var body = JSON.parse(response.getContentText());
+    if (response.getResponseCode() !== 200 || !body.content || !body.content.length) return null;
+    var text = String(body.content[0].text || '').trim().replace(/^```[a-z]*\n?/, '').replace(/\n?```$/, '').trim();
+    var parsed = JSON.parse(text);
+    return parsed.id || null;
+  } catch (err) {
+    Logger.log('pickRecipeWithAI_ error: ' + err);
+    return null;
+  }
+}
+
 function selectRecipeFromBank_(query, recipeBank, veganOnly, glutenFreeOnly, requestedRecipeId) {
   if (!recipeBank || !recipeBank.length) return null;
   requestedRecipeId = String(requestedRecipeId || '').trim();
@@ -1265,6 +1315,17 @@ function selectRecipeFromBank_(query, recipeBank, veganOnly, glutenFreeOnly, req
     }
   }
 
+  // Try AI-based selection first (Claude understands context and synonyms)
+  var aiPickedId = pickRecipeWithAI_(query, candidates);
+  if (aiPickedId) {
+    for (var ai = 0; ai < candidates.length; ai++) {
+      if (String(candidates[ai].recipe_id || '').trim() === String(aiPickedId).trim()) {
+        return candidates[ai];
+      }
+    }
+  }
+
+  // Fallback: keyword scoring if AI unavailable or returned null
   var bestScore = -1;
   var best = [];
 
@@ -2106,6 +2167,43 @@ function doPost(e) {
   }
 }
 
+
+function loadChatHistory_(userId) {
+  if (!userId) return [];
+  var sheet = ensureChatLogSheet_();
+  var hMap = getHeaderMap_(sheet);
+  var idCol = hMap['id'];
+  var chatCol = hMap['chat_log'];
+  if (idCol == null || chatCol == null) return [];
+
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+
+  var messages = [];
+  var data = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
+
+  for (var i = 0; i < data.length; i++) {
+    var rowId = String(data[i][idCol] || '').trim();
+    if (rowId !== String(userId).trim()) continue;
+
+    var chatLog = String(data[i][chatCol] || '').trim();
+    if (!chatLog) continue;
+
+    // Parse "User: ... | Assistant: ..." pairs
+    var parts = chatLog.split(' | ');
+    for (var p = 0; p < parts.length; p++) {
+      var part = parts[p].trim();
+      if (part.indexOf('User: ') === 0) {
+        messages.push({ role: 'user', content: part.substring(6) });
+      } else if (part.indexOf('Assistant: ') === 0) {
+        messages.push({ role: 'assistant', content: part.substring(11) });
+      }
+    }
+  }
+
+  return messages;
+}
+
 function doGet(e) {
   try {
     ensureDefaultAllowedOriginsProp_();
@@ -2167,6 +2265,14 @@ function doGet(e) {
 
     if (action === 'stats') {
       return jsonResponse_(buildStats_(params.days || 7));
+    }
+
+    if (action === 'chathistory') {
+      var histUserId = String(params.user_id || params.userId || params.client_id || params.clientId || '').trim();
+      if (!histUserId) return jsonResponse_({ ok: false, error: 'Missing user_id' });
+      var normalizedId = normalize7DigitId_(histUserId) || histUserId;
+      var histMessages = loadChatHistory_(normalizedId);
+      return jsonResponse_({ ok: true, action: 'chathistory', user_id: normalizedId, messages: histMessages, vendor: VENDOR_NAME, version: BACKEND_VERSION });
     }
 
     if (action === 'track' || action === 'trackevent') {
