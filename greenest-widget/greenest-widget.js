@@ -3639,6 +3639,7 @@ function dispatchWidgetReadyEvent(widget) {
             baseServings,
             assistantText: String(data.assistantText || data.message || "").trim(),
             ingredientMatches,
+            missingIngredients: Array.isArray(data.missingIngredients) ? data.missingIngredients : [],
             lang: this.normalizeLocaleCode(data.lang || payload.lang),
           };
         });
@@ -3849,6 +3850,8 @@ function dispatchWidgetReadyEvent(widget) {
           already_in_cart: alreadyInCart,
           qty_to_add: qtyToAdd,
           price: Number.isFinite(price) ? price : 0,
+          inStock: product.inStock !== false && product.isAvailable !== false,
+          ingredientName: product.ingredientName || "",
         };
       });
     }
@@ -3860,18 +3863,23 @@ function dispatchWidgetReadyEvent(widget) {
       products.forEach((product) => {
         const item = document.createElement("li");
         const neededText = this.formatNeededQty(product.needed);
-        if (product.cart_units === null) {
-          item.textContent = t("recipe_summary_qty_missing", {
-            name: product.name,
-          });
-          item.style.opacity = "0.6";
-        } else if (product.qty_to_add === 0) {
+        const outOfStock = product.inStock === false;
+
+        if (product.qty_to_add === 0) {
           item.textContent = t("recipe_summary_already_in_cart", {
             name: product.name,
             needed: neededText,
             unit: product.unit || "",
           });
           item.style.opacity = "0.65";
+        } else if (outOfStock) {
+          item.textContent = (ACTIVE_LOCALE === "en" ? "⚠ Out of stock: " : "⚠ Laost otsas: ") + product.name;
+          item.style.opacity = "0.55";
+        } else if (product.cart_units === null) {
+          item.textContent = t("recipe_summary_qty_missing", {
+            name: product.name,
+          });
+          item.style.opacity = "0.6";
         } else {
           item.textContent =
             product.already_in_cart > 0
@@ -3993,6 +4001,9 @@ function dispatchWidgetReadyEvent(widget) {
         : [];
       const ingredientMatches = Array.isArray((preview || {}).ingredientMatches)
         ? preview.ingredientMatches
+        : [];
+      const missingIngredients = Array.isArray((preview || {}).missingIngredients)
+        ? preview.missingIngredients
         : [];
       const rawAssistantText = String((preview || {}).assistantText || "").trim();
       const scaledText = rawAssistantText
@@ -4134,6 +4145,26 @@ function dispatchWidgetReadyEvent(widget) {
       productsContainer.className = "greenest-confirm-products";
       if (previewCartItems.length) {
         this.renderProductsSummary(productsContainer, previewCartItems);
+      }
+      if (missingIngredients.length) {
+        const missingTitle = document.createElement("div");
+        missingTitle.className = "greenest-confirm-missing-title";
+        missingTitle.textContent = ACTIVE_LOCALE === "en"
+          ? "Not available in store:"
+          : "Poest ei leia (osta mujalt):";
+        missingTitle.style.opacity = "0.5";
+        missingTitle.style.fontSize = "0.85em";
+        missingTitle.style.marginTop = "6px";
+        productsContainer.appendChild(missingTitle);
+        const missingList = document.createElement("ul");
+        missingIngredients.forEach((name) => {
+          const li = document.createElement("li");
+          li.textContent = "— " + name;
+          li.style.opacity = "0.45";
+          li.style.fontSize = "0.85em";
+          missingList.appendChild(li);
+        });
+        productsContainer.appendChild(missingList);
       }
       bubble.appendChild(productsContainer);
 
