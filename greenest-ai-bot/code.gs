@@ -2052,6 +2052,62 @@ function buildStats_(days) {
  * Returns recipes that contain at least one of the given product IDs,
  * sorted by match ratio (most covered first).
  *************************************************/
+
+function pickCartRecipeWithAI_(cartProductNames, candidates) {
+  var apiKey = getScriptProp_('ANTHROPIC_API_KEY');
+  if (!apiKey || !candidates.length) return null;
+
+  var cartList = cartProductNames.length
+    ? cartProductNames.join(', ')
+    : '(tundmatud tooted)';
+
+  var lines = candidates.map(function (c) {
+    return c.recipe_id + '|' + c.recipe_name +
+      ' (sobib ' + c.match_count + '/' + c.total_ingredients + ' koostisosaga)';
+  });
+
+  var prompt = [
+    'Kliendi ostukorvis on: ' + cartList,
+    '',
+    'Kandidaatretseptid (id|nimi|sobivus):',
+    lines.join('\n'),
+    '',
+    'Vali 1-3 kõige mõistlikumat retseptisoovitust arvestades:',
+    '- Kas retsept on temaatiliselt seotud ostukorvi toodetega?',
+    '- Kas retseptil on juba piisavalt koostisosi kaetud?',
+    '- Ära soovita kui sobivus on alla 20% (väga vähe kattuvust)',
+    '',
+    'Tagasta AINULT JSON: {"picks":[{"id":"retsepti_id","reason":"lühike põhjendus eesti keeles"}]}',
+    'Kui ükski ei sobi, tagasta {"picks":[]}'
+  ].join('\n');
+
+  var payload = {
+    model: CLAUDE_MODEL,
+    max_tokens: 200,
+    temperature: 0,
+    system: 'Sa oled Greenesti (Eesti mahetoidu e-pood) retseptisoovituse AI. Soovita ainult temaatiliselt sobivaid retsepte kliendi ostukorvi põhjal.',
+    messages: [{ role: 'user', content: prompt }]
+  };
+
+  try {
+    var response = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
+      method: 'post',
+      contentType: 'application/json',
+      headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true
+    });
+    var body = JSON.parse(response.getContentText());
+    if (response.getResponseCode() !== 200 || !body.content || !body.content.length) return null;
+    var text = String(body.content[0].text || '').trim().replace(/^```[a-z]*\n?/, '').replace(/\n?```$/, '').trim();
+    var parsed = JSON.parse(text);
+    return Array.isArray(parsed.picks) ? parsed.picks : null;
+  } catch (err) {
+    Logger.log('pickCartRecipeWithAI_ error: ' + err);
+    return null;
+  }
+}
+
 function buildCartRecipeCandidates_(productIds, limit) {
   if (!productIds || !productIds.length) return [];
   limit = limit || 20;
@@ -2065,6 +2121,16 @@ function buildCartRecipeCandidates_(productIds, limit) {
   }
   var wanted = Object.keys(ids);
   if (!wanted.length) return [];
+
+  // Collect cart product names for AI context
+  var cartProductNames = [];
+  for (var ci = 0; ci < productIds.length; ci++) {
+    var cartKey = getCanonicalProductKeyFromId_(productIds[ci], productsById);
+    if (cartKey && productsById[cartKey]) {
+      var pName = String(productsById[cartKey].productName || productsById[cartKey].product_name || '').trim();
+      if (pName) cartProductNames.push(pName);
+    }
+  }
 
   var bank = loadRecipeBank_();
   var candidates = [];
@@ -2104,7 +2170,29 @@ function buildCartRecipeCandidates_(productIds, limit) {
     return b.match_count - a.match_count;
   });
 
-  return candidates.slice(0, Math.max(1, limit));
+  var topCandidates = candidates.slice(0, Math.max(10, limit * 2));
+
+  // AI picks the most relevant recipes from top candidates
+  var aiPicks = pickCartRecipeWithAI_(cartProductNames, topCandidates);
+  if (aiPicks && aiPicks.length) {
+    var aiPickIds = {};
+    aiPicks.forEach(function (pick) { aiPickIds[String(pick.id || '').trim()] = pick.reason || ''; });
+
+    // Return AI-selected recipes first (with reason), then remaining by ratio
+    var aiResults = [];
+    var remaining = [];
+    topCandidates.forEach(function (c) {
+      if (aiPickIds[c.recipe_id] !== undefined) {
+        aiResults.push(Object.assign({}, c, { ai_reason: aiPickIds[c.recipe_id], ai_pick: true }));
+      } else {
+        remaining.push(c);
+      }
+    });
+    return aiResults.concat(remaining).slice(0, Math.max(1, limit));
+  }
+
+  // Fallback: return rule-based sorted candidates
+  return topCandidates.slice(0, Math.max(1, limit));
 }
 
 /*************************************************
