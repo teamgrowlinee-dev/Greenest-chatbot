@@ -5189,32 +5189,33 @@ function dispatchWidgetReadyEvent(widget) {
     }
 
     handleCartBannerClick() {
-      console.log("[Greenest] handleCartBannerClick - start");
       const sig = this.cartBannerSig || "";
       this.openChat();
-      console.log("[Greenest] handleCartBannerClick - after openChat");
       this.hideCartBanner(true);
-      console.log("[Greenest] handleCartBannerClick - after hideCartBanner");
       if (sig && this.hasSystemMessage("cart_recipe_candidates", sig)) return;
       this.trackEvent("cart_banner_opened", { assisted: 0, reason: "banner" });
+
+      // Use already-fetched candidates instead of making a new API call
+      const cached = Array.isArray(this.lastCandidates) && this.lastCandidates.length
+        ? this.lastCandidates
+        : null;
+
+      if (cached) {
+        this.injectSystemMessage("cart_recipe_candidates", cached, { sig });
+        return;
+      }
+
+      // No cached candidates yet — fetch now
       const productIds = this.getCartProductIds();
-      console.log("[Greenest] handleCartBannerClick - productIds:", productIds);
       if (sig) {
         this.injectSystemMessage("cart_recipe_candidates", [], { sig, loading: true });
       }
-      console.log("[Greenest] handleCartBannerClick - about to call fetch");
       this.fetchCartRecipeCandidates(productIds, 20).then((candidates) => {
-        console.log("[Greenest] handleCartBannerClick - fetch returned:", candidates.length);
-        // If API returns empty, use fallback from loaded recipes
         if (!candidates.length) {
-          console.log("[Greenest] API returned no candidates, checking local recipes");
           candidates = this._getFallbackRecipesFromCart(productIds);
         }
         if (!candidates.length) {
-          // No recipes found, update loading to show empty state
-          if (sig) {
-            this.updateCartCandidatesMessage(sig, []);
-          }
+          if (sig) this.updateCartCandidatesMessage(sig, []);
           return;
         }
         if (sig) {
