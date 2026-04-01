@@ -1158,7 +1158,7 @@ function dispatchWidgetReadyEvent(widget) {
 
     loadChatHistory() {
       if (!this.webAppUrl || !this.clientId) return;
-      const userId = this.clientId;
+      const userId = this.chatClientId || this.clientId;
       fetch(`${this.webAppUrl}?action=chathistory&user_id=${encodeURIComponent(userId)}`)
         .then((res) => res.json())
         .then((data) => {
