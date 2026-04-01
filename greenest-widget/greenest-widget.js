@@ -4294,6 +4294,14 @@ function dispatchWidgetReadyEvent(widget) {
         recipe_label: recipe.label,
       });
 
+      // Log to chat history so it persists across refreshes
+      this.logChatMessage({
+        userMessage: displayLabel,
+        assistantMessage: ACTIVE_LOCALE === "en"
+          ? "Here is the recipe: " + displayLabel + ". You can add the ingredients to your cart."
+          : "Siin on retsept: " + displayLabel + ". Saad koostisosad ostukorvi lisada.",
+      });
+
       this.ensureRecipeConfirmEntryLocale(entry, ACTIVE_LOCALE)
         .then(() => this.renderChatEntries())
         .catch(() => this.renderChatEntries());
