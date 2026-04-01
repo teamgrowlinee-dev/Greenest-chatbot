@@ -1157,11 +1157,17 @@ function dispatchWidgetReadyEvent(widget) {
     }
 
     loadChatHistory() {
-      if (!this.webAppUrl || !this.clientId) return;
+      if (!this.webAppUrl || !this.clientId) {
+        console.warn("[GreenestHistory] aborted — no webAppUrl or clientId", { webAppUrl: this.webAppUrl, clientId: this.clientId });
+        return;
+      }
       const userId = this.chatClientId || this.clientId;
-      fetch(`${this.webAppUrl}?action=chathistory&user_id=${encodeURIComponent(userId)}`)
+      const url = `${this.webAppUrl}?action=chathistory&user_id=${encodeURIComponent(userId)}`;
+      console.log("[GreenestHistory] loading for userId:", userId, "url:", url);
+      fetch(url)
         .then((res) => res.json())
         .then((data) => {
+          console.log("[GreenestHistory] response:", JSON.stringify(data).slice(0, 500));
           if (!data.ok || !Array.isArray(data.messages) || !data.messages.length) return;
           data.messages.forEach((msg) => {
             if (msg.role === "user" || msg.role === "assistant") {
@@ -1169,8 +1175,8 @@ function dispatchWidgetReadyEvent(widget) {
             }
           });
         })
-        .catch(() => {
-          // History load failed silently — not critical
+        .catch((err) => {
+          console.warn("[GreenestHistory] fetch failed:", err);
         });
     }
 
@@ -3257,10 +3263,11 @@ function dispatchWidgetReadyEvent(widget) {
 
     logChatMessage(entry = {}) {
       try {
-        if (!this.enableChatLogging) return null;
-        if (!this.webAppUrl) return null;
+        if (!this.enableChatLogging) { console.warn("[GreenestHistory] chatlog disabled"); return null; }
+        if (!this.webAppUrl) { console.warn("[GreenestHistory] no webAppUrl"); return null; }
 
         const payload = this.buildChatLogPayload(entry);
+        console.log("[GreenestHistory] saving chatlog, client_id:", payload.client_id, "user_msg:", (payload.user_message||"").slice(0,50));
         if (
           !payload.user_message &&
           !payload.assistant_message &&
@@ -3273,16 +3280,15 @@ function dispatchWidgetReadyEvent(widget) {
           method: "POST",
           body: JSON.stringify(payload),
           keepalive: true,
-        }).catch((error) => {
-          if (this.debug) {
-            console.warn("[GreenestWidget] chatlog failed", error);
-          }
+        }).then((res) => res.json().then((data) => {
+          console.log("[GreenestHistory] chatlog save response:", JSON.stringify(data).slice(0, 200));
+          return data;
+        })).catch((error) => {
+          console.warn("[GreenestWidget] chatlog failed", error);
           return null;
         });
       } catch (error) {
-        if (this.debug) {
-          console.warn("[GreenestWidget] chatlog exception", error);
-        }
+        console.warn("[GreenestWidget] chatlog exception", error);
         return null;
       }
     }
