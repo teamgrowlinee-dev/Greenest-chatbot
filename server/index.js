@@ -39,7 +39,7 @@ app.get("/widget/loader.js", (_req, res) => {
       siteToken: "${SITE_TOKEN}",
       vendor: "growlinee",
       widgetVersion: "v4.5",
-      recipeOnlyMode: true,
+      recipeOnlyMode: false,
       hideRecipeImages: true,
       defaultServings: 2,
       enableChatLogging: true,
