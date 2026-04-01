@@ -2681,7 +2681,10 @@ function dispatchWidgetReadyEvent(widget) {
             ? data.coreProducts
             : [];
           const products = mainProducts.length ? mainProducts : fallback;
-          const addedCount = this.addProductsToCart(products);
+          let addedCount = 0;
+          if (ENABLE_AUTO_ADD && products.length) {
+            addedCount = this.addProductsToCart(products);
+          }
           if (addedCount > 0) {
             this.notifyCartAddition(addedCount);
             this.trackEvent("cart_add", {
@@ -4417,16 +4420,14 @@ function dispatchWidgetReadyEvent(widget) {
       if (!changed && this.externalCartHydrated === true && options.forceRefresh !== true) {
         return false;
       }
-      this.cart = { items: normalized };
-      if (this.showInternalCartUI) {
-        this.saveCart();
-      }
-      this.updateCartUI();
+      // Only sync for recipe candidate lookup — do NOT overwrite widget cart contents.
+      // Replacing this.cart with external data caused unexpected products on page refresh.
+      this.externalCartSnapshotItems = normalized;
       this.externalCartHydrated = true;
       if (!changed && options.forceRefresh !== true) {
         return false;
       }
-      this.refreshCartRecipeCandidates()
+      this.refreshCartRecipeCandidates(normalized.map((i) => i.id || i.product_id || i.productId).filter(Boolean))
         .then(() => this.maybeShowCartBanner(reason || "adapter_sync", { ignoreCooldown: true }))
         .catch(() => {
           /* ignore */
