@@ -739,7 +739,7 @@ const PRODUCT_SEARCH_DISABLED_MESSAGE =
 const ENABLE_AUTO_ADD =
   typeof GLOBAL_WIDGET_CONFIG.enableAutoAddToCart === "boolean"
     ? GLOBAL_WIDGET_CONFIG.enableAutoAddToCart
-    : true;
+    : false;
 const GREENEST_CART_ADAPTER = resolveCartAdapter(GLOBAL_WIDGET_CONFIG);
 const GREENEST_CART_ADAPTER_MODE = normalizeCartAdapterMode(
   GLOBAL_WIDGET_CONFIG.cartAdapterMode ||
@@ -1153,6 +1153,25 @@ function dispatchWidgetReadyEvent(widget) {
       this.trackEvent("widget_loaded", { assisted: 0, reason: "auto" });
       document.addEventListener("keydown", this.boundHandleKeyDown);
       document.addEventListener("visibilitychange", this.boundHandleVisibilityChange);
+      this.loadChatHistory();
+    }
+
+    loadChatHistory() {
+      if (!this.webAppUrl || !this.clientId) return;
+      const userId = this.clientId;
+      fetch(`${this.webAppUrl}?action=chathistory&user_id=${encodeURIComponent(userId)}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (!data.ok || !Array.isArray(data.messages) || !data.messages.length) return;
+          data.messages.forEach((msg) => {
+            if (msg.role === "user" || msg.role === "assistant") {
+              this.appendMessage(msg.role, msg.content, { fromHistory: true });
+            }
+          });
+        })
+        .catch(() => {
+          // History load failed silently — not critical
+        });
     }
 
     render() {
