@@ -2247,6 +2247,25 @@ function doGet(e) {
     var params = (e && e.parameter) ? e.parameter : {};
     var action = String(params.action || '').trim().toLowerCase();
 
+    if (action === 'setupaltcolumns') {
+      var ss = getSpreadsheet_();
+      var sh = ss.getSheetByName(RECIPE_BANK_SHEET);
+      if (!sh) return jsonResponse_({ ok: false, error: 'Recipe_Bank sheet not found' });
+      var headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+      var added = [];
+      for (var ingN = 1; ingN <= 12; ingN++) {
+        for (var altN = 1; altN <= 3; altN++) {
+          var colName = 'ing' + ingN + '_alt' + altN + '_product_id';
+          if (headers.indexOf(colName) === -1) {
+            headers.push(colName);
+            sh.getRange(1, headers.length).setValue(colName);
+            added.push(colName);
+          }
+        }
+      }
+      return jsonResponse_({ ok: true, action: 'setupAltColumns', added: added, total_added: added.length });
+    }
+
     if (action === 'ping') {
       return jsonResponse_({
         ok: true,
