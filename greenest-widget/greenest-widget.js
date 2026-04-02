@@ -3575,6 +3575,9 @@ function dispatchWidgetReadyEvent(widget) {
                   product.ingredientName ||
                   ""
               ).trim(),
+              alternatives: Array.isArray(ingredientMeta && ingredientMeta.alternatives)
+                ? ingredientMeta.alternatives
+                : Array.isArray(product.alternatives) ? product.alternatives : [],
             };
           };
 
@@ -3858,18 +3861,20 @@ function dispatchWidgetReadyEvent(widget) {
           price: Number.isFinite(price) ? price : 0,
           inStock: product.inStock !== false && product.isAvailable !== false,
           ingredientName: product.ingredientName || "",
+          alternatives: Array.isArray(product.alternatives) ? product.alternatives : [],
         };
       });
     }
 
-    renderProductsSummary(containerEl, products) {
+    renderProductsSummary(containerEl, products, onSwapAlternative) {
       if (!containerEl) return;
       containerEl.innerHTML = "";
       const list = document.createElement("ul");
-      products.forEach((product) => {
+      products.forEach((product, productIdx) => {
         const item = document.createElement("li");
         const neededText = this.formatNeededQty(product.needed);
         const outOfStock = product.inStock === false;
+        const hasAlts = outOfStock && Array.isArray(product.alternatives) && product.alternatives.length > 0;
 
         if (product.qty_to_add === 0) {
           item.textContent = t("recipe_summary_already_in_cart", {
@@ -3879,8 +3884,56 @@ function dispatchWidgetReadyEvent(widget) {
           });
           item.style.opacity = "0.65";
         } else if (outOfStock) {
-          item.textContent = (ACTIVE_LOCALE === "en" ? "⚠ Out of stock: " : "⚠ Laost otsas: ") + product.name;
-          item.style.opacity = "0.55";
+          const row = document.createElement("div");
+          row.style.display = "flex";
+          row.style.alignItems = "center";
+          row.style.gap = "6px";
+          row.style.flexWrap = "wrap";
+
+          const label = document.createElement("span");
+          label.textContent = (ACTIVE_LOCALE === "en" ? "⚠ Out of stock: " : "⚠ Laost otsas: ") + product.name;
+          label.style.opacity = "0.55";
+          row.appendChild(label);
+
+          if (hasAlts && typeof onSwapAlternative === "function") {
+            const altBtn = document.createElement("button");
+            altBtn.type = "button";
+            altBtn.textContent = ACTIVE_LOCALE === "en" ? "Alternatives ▾" : "Alternatiivid ▾";
+            altBtn.style.cssText = "font-size:0.78em;padding:2px 7px;border-radius:10px;border:1px solid #ccc;background:#f5f5f5;cursor:pointer;";
+
+            const altList = document.createElement("ul");
+            altList.style.cssText = "display:none;width:100%;margin:4px 0 0 0;padding:0;list-style:none;";
+
+            product.alternatives.forEach((alt) => {
+              const altItem = document.createElement("li");
+              const altBtn2 = document.createElement("button");
+              altBtn2.type = "button";
+              altBtn2.textContent = (alt.name || alt.productName || "") +
+                (alt.inStock === false ? (ACTIVE_LOCALE === "en" ? " (out of stock)" : " (laost otsas)") : "");
+              altBtn2.style.cssText = "font-size:0.82em;padding:3px 8px;margin:2px 0;border-radius:8px;border:1px solid #aaa;background:#fff;cursor:pointer;width:100%;text-align:left;";
+              if (alt.inStock === false) altBtn2.style.opacity = "0.5";
+              altBtn2.addEventListener("click", () => {
+                onSwapAlternative(productIdx, alt);
+              });
+              altItem.appendChild(altBtn2);
+              altList.appendChild(altItem);
+            });
+
+            altBtn.addEventListener("click", () => {
+              const open = altList.style.display !== "none";
+              altList.style.display = open ? "none" : "block";
+              altBtn.textContent = open
+                ? (ACTIVE_LOCALE === "en" ? "Alternatives ▾" : "Alternatiivid ▾")
+                : (ACTIVE_LOCALE === "en" ? "Alternatives ▴" : "Alternatiivid ▴");
+            });
+
+            row.appendChild(altBtn);
+            item.appendChild(row);
+            item.appendChild(altList);
+          } else {
+            item.appendChild(row);
+          }
+          item.style.opacity = "0.85";
         } else if (product.cart_units === null) {
           item.textContent = t("recipe_summary_qty_missing", {
             name: product.name,
@@ -4147,31 +4200,63 @@ function dispatchWidgetReadyEvent(widget) {
       }
       bubble.appendChild(status);
 
+      // Allow swapping out-of-stock items with alternatives
+      const swappedProducts = previewCartItems.slice();
+      const onSwapAlternative = (idx, alt) => {
+        // Build a replacement product with same qty meta but different product
+        const original = swappedProducts[idx];
+        swappedProducts[idx] = Object.assign({}, original, {
+          id: String(alt.product_id || alt.productId || alt.id || ""),
+          product_id: String(alt.product_id || alt.productId || alt.id || ""),
+          productId: String(alt.product_id || alt.productId || alt.id || ""),
+          name: alt.name || alt.productName || original.name,
+          price: Number(alt.price || 0),
+          inStock: alt.inStock !== false,
+          alternatives: [],
+        });
+        // Recompute qty_to_add for swapped item
+        const cartItemsList = this.cart && Array.isArray(this.cart.items) ? this.cart.items : [];
+        const cartItem = cartItemsList.find((i) => i.id === swappedProducts[idx].id) || null;
+        const alreadyInCart = Number((cartItem || {}).qty || 0);
+        swappedProducts[idx].already_in_cart = alreadyInCart;
+        swappedProducts[idx].qty_to_add = swappedProducts[idx].cart_units !== null
+          ? Math.max(0, swappedProducts[idx].cart_units - alreadyInCart)
+          : null;
+        // Re-render products container only
+        productsContainer.innerHTML = "";
+        renderProducts();
+      };
+
+      const renderProducts = () => {
+        if (swappedProducts.length) {
+          this.renderProductsSummary(productsContainer, swappedProducts, onSwapAlternative);
+        }
+        if (missingIngredients.length) {
+          const missingTitle = document.createElement("div");
+          missingTitle.className = "greenest-confirm-missing-title";
+          missingTitle.textContent = ACTIVE_LOCALE === "en" ? "Not available in store:" : "Poest ei leia (osta mujalt):";
+          missingTitle.style.cssText = "opacity:0.5;font-size:0.85em;margin-top:6px;";
+          productsContainer.appendChild(missingTitle);
+          const missingList = document.createElement("ul");
+          missingIngredients.forEach((name) => {
+            const li = document.createElement("li");
+            li.textContent = "— " + name;
+            li.style.opacity = "0.45";
+            li.style.fontSize = "0.85em";
+            missingList.appendChild(li);
+          });
+          productsContainer.appendChild(missingList);
+        }
+      };
+
+      // Override confirm button to use swappedProducts
+      const getCartItemsForAdd = () => swappedProducts.filter(
+        (item) => item.qty_to_add !== null && item.qty_to_add > 0
+      );
+
       const productsContainer = document.createElement("div");
       productsContainer.className = "greenest-confirm-products";
-      if (previewCartItems.length) {
-        this.renderProductsSummary(productsContainer, previewCartItems);
-      }
-      if (missingIngredients.length) {
-        const missingTitle = document.createElement("div");
-        missingTitle.className = "greenest-confirm-missing-title";
-        missingTitle.textContent = ACTIVE_LOCALE === "en"
-          ? "Not available in store:"
-          : "Poest ei leia (osta mujalt):";
-        missingTitle.style.opacity = "0.5";
-        missingTitle.style.fontSize = "0.85em";
-        missingTitle.style.marginTop = "6px";
-        productsContainer.appendChild(missingTitle);
-        const missingList = document.createElement("ul");
-        missingIngredients.forEach((name) => {
-          const li = document.createElement("li");
-          li.textContent = "— " + name;
-          li.style.opacity = "0.45";
-          li.style.fontSize = "0.85em";
-          missingList.appendChild(li);
-        });
-        productsContainer.appendChild(missingList);
-      }
+      renderProducts();
       bubble.appendChild(productsContainer);
 
       const productsNote = document.createElement("div");
@@ -4190,9 +4275,7 @@ function dispatchWidgetReadyEvent(widget) {
       confirmBtn.disabled = !preview || !hasAddable;
       confirmBtn.addEventListener("click", () => {
         confirmBtn.disabled = true;
-        const cartItems = previewCartItems.filter(
-          (item) => item.qty_to_add !== null && item.qty_to_add > 0
-        );
+        const cartItems = getCartItemsForAdd();
         const addedCount = this.addProductsToCart(
           cartItems.map((item) => ({
             id: item.id,
