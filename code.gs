@@ -715,6 +715,12 @@ function loadRecipeBank_() {
 
       if (!label && !pid) continue;
 
+      var altIds = [];
+      for (var a = 1; a <= 3; a++) {
+        var altPid = getVal_(row, map['ing' + i + '_alt' + a + '_product_id']).trim();
+        if (altPid) altIds.push(String(altPid));
+      }
+
       rec.ingredients.push({
         ingredientName: label,
         productId: pid ? String(pid) : '',
@@ -722,7 +728,8 @@ function loadRecipeBank_() {
         required: req,
         qty_base: qtyBase,
         qtyBase: qtyBase,
-        unit: unit
+        unit: unit,
+        alt_product_ids: altIds
       });
     }
 
@@ -1637,6 +1644,11 @@ function buildRecipeResponseFromBank_(query, productsAll, veganOnly, glutenFreeO
     var wrapped = p ? wrapProductForApi_(p, lang) : null;
     var enrichedProduct = mergeIngredientMetaIntoProduct_(wrapped, ing);
 
+    var altProducts = (ing.alt_product_ids || []).map(function(altId) {
+      var altP = altId ? productsById[altId] : null;
+      return altP ? wrapProductForApi_(altP, lang) : null;
+    }).filter(Boolean);
+
     ingredientMatches.push({
       ingredientName: String(ing.ingredientName || '').trim(),
       amount: String(ing.amount || '').trim(),
@@ -1645,7 +1657,8 @@ function buildRecipeResponseFromBank_(query, productsAll, veganOnly, glutenFreeO
       unit: String(ing.unit || '').trim(),
       required: !!ing.required,
       productId: pid,
-      product: enrichedProduct
+      product: enrichedProduct,
+      alternatives: altProducts
     });
 
     if (ing.required && enrichedProduct && enrichedProduct.id) {
