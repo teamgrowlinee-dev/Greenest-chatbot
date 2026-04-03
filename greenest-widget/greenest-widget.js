@@ -2096,6 +2096,9 @@ function dispatchWidgetReadyEvent(widget) {
       if (entry.type === "system_cart_candidates") {
         return this.renderSystemCartCandidatesEntry(entry);
       }
+      if (entry.type === "recipe_choice") {
+        return this.renderRecipeChoiceEntry(entry);
+      }
       return null;
     }
 
@@ -2831,6 +2834,18 @@ function dispatchWidgetReadyEvent(widget) {
             throw new Error(
               data && data.error ? data.error : t("error_request_failed")
             );
+          }
+
+          // Disambiguation: multiple recipe types → show choice cards
+          if (data.mode === 'recipe_choice' && Array.isArray(data.candidates) && data.candidates.length > 0) {
+            const question = String(data.question || data.assistantText || (ACTIVE_LOCALE === 'en' ? 'Which recipe did you have in mind?' : 'Millist retsepti soovisid?'));
+            await this.appendLocalizedMessage('assistant', question, { sourceLocale: data.lang || ACTIVE_LOCALE });
+            this.appendChatEntry(this.createChatEntry('recipe_choice', {
+              sourceLocale: ACTIVE_LOCALE,
+              payload: { candidates: data.candidates }
+            }));
+            this.logChatMessage({ requestId, status: 'ok', userMessage: query, assistantMessage: question });
+            return;
           }
 
           const assistantText =
@@ -5608,6 +5623,18 @@ function dispatchWidgetReadyEvent(widget) {
 
       wrapper.appendChild(bubble);
       return wrapper;
+    }
+
+    renderRecipeChoiceEntry(entry) {
+      const el = document.createElement('div');
+      el.className = 'greenest-system-message';
+      el.dataset.entryId = entry.id;
+      const list = document.createElement('div');
+      list.className = 'greenest-system-recipe-list';
+      const candidates = (entry.payload && Array.isArray(entry.payload.candidates)) ? entry.payload.candidates : [];
+      this._renderRecipeCandidateCards(list, candidates);
+      el.appendChild(list);
+      return el;
     }
 
     _renderRecipeCandidateCards(list, candidates, sig) {
