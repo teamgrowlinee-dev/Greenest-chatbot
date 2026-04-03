@@ -2009,3 +2009,69 @@
 .greenest-link-btn:hover {
   opacity: 0.88;
 }
+
+/* Alt product toggle button */
+.greenest-alt-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  padding: 7px 14px;
+  min-height: 36px;
+  border-radius: 999px;
+  border: 1px solid var(--greenest-green);
+  background: rgba(17, 199, 111, 0.12);
+  color: var(--greenest-green);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, box-shadow 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.greenest-alt-toggle:hover,
+.greenest-alt-toggle.is-open {
+  background: rgba(17, 199, 111, 0.22);
+  box-shadow: 0 0 0 1px rgba(17, 199, 111, 0.35);
+}
+
+/* Alt product dropdown list */
+.greenest-alt-list {
+  display: none;
+  list-style: none;
+  margin: 6px 0 2px 0;
+  padding: 0;
+  width: 100%;
+}
+.greenest-alt-list.is-open {
+  display: block;
+}
+.greenest-alt-list li {
+  margin: 4px 0;
+}
+
+/* Individual alt product option */
+.greenest-alt-option {
+  display: block;
+  width: 100%;
+  padding: 9px 14px;
+  min-height: 40px;
+  border-radius: 10px;
+  border: 1px solid var(--greenest-border);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--greenest-text);
+  font-size: 0.83rem;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+  -webkit-tap-highlight-color: transparent;
+}
+.greenest-alt-option:hover {
+  background: rgba(17, 199, 111, 0.1);
+  border-color: rgba(17, 199, 111, 0.4);
+}
+.greenest-alt-option:active {
+  background: rgba(17, 199, 111, 0.18);
+}
+.greenest-alt-option.is-oos {
+  opacity: 0.45;
+}
