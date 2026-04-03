@@ -1247,16 +1247,17 @@ function pickRecipeWithAI_(query, candidates) {
     'Saadaval retseptid (id|nimi|aliases|tags):',
     lines.join('\n'),
     '',
-    'Vali 1 kõige paremini sobiv retsept.',
-    'Kui ükski ei sobi, tagasta {"id":null}.',
-    'Tagasta AINULT JSON kujul {"id":"retsepti_id"}, mitte midagi muud.'
+    'Kui kliendi soov on selge → tagasta: {"id":"retsepti_id"}',
+    'Kui kliendi soov on ebaselge ERINEVATE TOOTETÜÜPIDE vahel (nt toortatar vs röstitud tatar, tatrapasta vs durumpasta vs speltanuudlid) → tagasta: {"ids":["id1","id2"],"question":"[lühike eestikeelne küsimus kasutajale]"}',
+    'Kui ükski ei sobi, tagasta: {"id":null}',
+    'Tagasta AINULT JSON, mitte midagi muud.'
   ].join('\n');
 
   var payload = {
     model: CLAUDE_MODEL,
-    max_tokens: 80,
+    max_tokens: 200,
     temperature: 0,
-    system: 'Vali järgnevast nimekirjast kliendi otsingule kõige paremini sobiv retsept. Kasuta oma otsustust — arvesta sünonüüme ja konteksti. Kui sobivat pole, tagasta {"id":null}.',
+    system: 'Vali järgnevast nimekirjast kliendi otsingule sobiv retsept. Arvesta sünonüüme ja konteksti. Kui query on ebaselge erinevate tootetüüpide vahel, tagasta mitu valikut. Kui sobivat pole, tagasta {"id":null}.',
     messages: [{ role: 'user', content: prompt }]
   };
 
@@ -1272,6 +1273,10 @@ function pickRecipeWithAI_(query, candidates) {
     if (response.getResponseCode() !== 200 || !body.content || !body.content.length) return null;
     var text = String(body.content[0].text || '').trim().replace(/^```[a-z]*\n?/, '').replace(/\n?```$/, '').trim();
     var parsed = JSON.parse(text);
+    // Multi-choice: {ids: [...], question: "..."}
+    if (Array.isArray(parsed.ids) && parsed.ids.length > 1) {
+      return { ids: parsed.ids, question: String(parsed.question || '') };
+    }
     return parsed.id || null;
   } catch (err) {
     Logger.log('pickRecipeWithAI_ error: ' + err);
@@ -1306,7 +1311,26 @@ function selectRecipeFromBank_(query, recipeBank, veganOnly, glutenFreeOnly, req
 
   // AI sees the full recipe bank — no keyword pre-filter
   var aiPickedId = pickRecipeWithAI_(query, candidates);
-  if (aiPickedId) {
+
+  // Multi-choice: AI returned {ids: [...], question: "..."}
+  if (aiPickedId && typeof aiPickedId === 'object' && Array.isArray(aiPickedId.ids)) {
+    var choiceRecipes = [];
+    aiPickedId.ids.forEach(function(rid) {
+      for (var ci = 0; ci < candidates.length; ci++) {
+        if (String(candidates[ci].recipe_id || '').trim() === String(rid).trim()) {
+          choiceRecipes.push(candidates[ci]);
+          break;
+        }
+      }
+    });
+    if (choiceRecipes.length > 1) {
+      return { _multipleChoice: true, recipes: choiceRecipes, question: aiPickedId.question };
+    }
+    // Only 1 found → fall through as single
+    if (choiceRecipes.length === 1) return choiceRecipes[0];
+  }
+
+  if (aiPickedId && typeof aiPickedId === 'string') {
     for (var ai = 0; ai < candidates.length; ai++) {
       if (String(candidates[ai].recipe_id || '').trim() === String(aiPickedId).trim()) {
         return candidates[ai];
@@ -1614,6 +1638,28 @@ function buildRecipeResponseFromBank_(query, productsAll, veganOnly, glutenFreeO
   var isEn = normalizeLang_(lang) === 'en';
   var recipeBank = loadRecipeBank_();
   var rec = selectRecipeFromBank_(query, recipeBank, veganOnly, glutenFreeOnly, recipeId);
+
+  // Disambiguation: multiple recipe types match — let user choose
+  if (rec && rec._multipleChoice) {
+    var isEnChoice = normalizeLang_(lang) === 'en';
+    return {
+      ok: true,
+      mode: 'recipe_choice',
+      question: rec.question || (isEnChoice ? 'Which recipe did you have in mind?' : 'Millist retsepti soovisid?'),
+      candidates: rec.recipes.map(function(r) {
+        return {
+          recipe_id: String(r.recipe_id || ''),
+          recipe_name: String(r.recipe_name || ''),
+          base_servings: Number(r.base_servings) || 2
+        };
+      }),
+      assistantText: rec.question || (isEnChoice ? 'Which recipe did you have in mind?' : 'Millist retsepti soovisid?'),
+      mainProducts: [],
+      upsellProducts: [],
+      vendor: VENDOR_NAME,
+      version: BACKEND_VERSION
+    };
+  }
 
   if (!rec) {
     return {
