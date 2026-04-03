@@ -3633,6 +3633,23 @@ function dispatchWidgetReadyEvent(widget) {
               .map((product) => normalizePreviewProduct(product, null))
               .filter(Boolean);
           }
+
+          // Enrich products with alternatives from ingredientMatches
+          // (mainProducts path loses alternatives — merge them back here)
+          if (ingredientMatches.length) {
+            const altsByProductId = {};
+            ingredientMatches.forEach((match) => {
+              if (match && match.productId && Array.isArray(match.alternatives) && match.alternatives.length > 0) {
+                altsByProductId[String(match.productId)] = match.alternatives;
+              }
+            });
+            products = products.map((p) => {
+              if (!p || (Array.isArray(p.alternatives) && p.alternatives.length > 0)) return p;
+              const alts = altsByProductId[String(p.id || p.product_id || p.productId || '')];
+              return alts && alts.length > 0 ? { ...p, alternatives: alts } : p;
+            });
+          }
+
           const baseServings =
             Number(
               data.base_servings ||
