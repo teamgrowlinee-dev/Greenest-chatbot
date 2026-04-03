@@ -3930,20 +3930,19 @@ function dispatchWidgetReadyEvent(widget) {
           if (hasAlts && typeof onSwapAlternative === "function") {
             const altBtn = document.createElement("button");
             altBtn.type = "button";
+            altBtn.className = "greenest-alt-toggle";
             altBtn.textContent = ACTIVE_LOCALE === "en" ? "Alternatives ▾" : "Alternatiivid ▾";
-            altBtn.style.cssText = "font-size:0.78em;padding:2px 7px;border-radius:10px;border:1px solid #ccc;background:#f5f5f5;cursor:pointer;";
 
             const altList = document.createElement("ul");
-            altList.style.cssText = "display:none;width:100%;margin:4px 0 0 0;padding:0;list-style:none;";
+            altList.className = "greenest-alt-list";
 
             product.alternatives.forEach((alt) => {
               const altItem = document.createElement("li");
               const altBtn2 = document.createElement("button");
               altBtn2.type = "button";
+              altBtn2.className = "greenest-alt-option" + (alt.inStock === false ? " is-oos" : "");
               altBtn2.textContent = (alt.name || alt.productName || "") +
                 (alt.inStock === false ? (ACTIVE_LOCALE === "en" ? " (out of stock)" : " (laost otsas)") : "");
-              altBtn2.style.cssText = "font-size:0.82em;padding:3px 8px;margin:2px 0;border-radius:8px;border:1px solid #aaa;background:#fff;cursor:pointer;width:100%;text-align:left;";
-              if (alt.inStock === false) altBtn2.style.opacity = "0.5";
               altBtn2.addEventListener("click", () => {
                 onSwapAlternative(productIdx, alt);
               });
@@ -3952,8 +3951,9 @@ function dispatchWidgetReadyEvent(widget) {
             });
 
             altBtn.addEventListener("click", () => {
-              const open = altList.style.display !== "none";
-              altList.style.display = open ? "none" : "block";
+              const open = altList.classList.contains("is-open");
+              altList.classList.toggle("is-open", !open);
+              altBtn.classList.toggle("is-open", !open);
               altBtn.textContent = open
                 ? (ACTIVE_LOCALE === "en" ? "Alternatives ▾" : "Alternatiivid ▾")
                 : (ACTIVE_LOCALE === "en" ? "Alternatives ▴" : "Alternatiivid ▴");
