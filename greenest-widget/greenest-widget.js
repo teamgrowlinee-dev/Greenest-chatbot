@@ -3906,7 +3906,7 @@ function dispatchWidgetReadyEvent(widget) {
         const item = document.createElement("li");
         const neededText = this.formatNeededQty(product.needed);
         const outOfStock = product.inStock === false;
-        const hasAlts = outOfStock && Array.isArray(product.alternatives) && product.alternatives.length > 0;
+        const hasAlts = Array.isArray(product.alternatives) && product.alternatives.length > 0;
 
         if (product.qty_to_add === 0) {
           item.textContent = t("recipe_summary_already_in_cart", {
@@ -3972,21 +3972,62 @@ function dispatchWidgetReadyEvent(widget) {
           });
           item.style.opacity = "0.6";
         } else {
-          item.textContent =
-            product.already_in_cart > 0
-              ? t("recipe_summary_add_existing", {
-                  name: product.name,
-                  needed: neededText,
-                  unit: product.unit || "",
-                  qty: product.qty_to_add,
-                  in_cart: product.already_in_cart,
-                })
-              : t("recipe_summary_add_to_cart", {
-                  name: product.name,
-                  needed: neededText,
-                  unit: product.unit || "",
-                  qty: product.qty_to_add,
-                });
+          const labelText = product.already_in_cart > 0
+            ? t("recipe_summary_add_existing", {
+                name: product.name,
+                needed: neededText,
+                unit: product.unit || "",
+                qty: product.qty_to_add,
+                in_cart: product.already_in_cart,
+              })
+            : t("recipe_summary_add_to_cart", {
+                name: product.name,
+                needed: neededText,
+                unit: product.unit || "",
+                qty: product.qty_to_add,
+              });
+          if (hasAlts && typeof onSwapAlternative === "function") {
+            const row = document.createElement("div");
+            row.style.display = "flex";
+            row.style.alignItems = "center";
+            row.style.gap = "6px";
+            row.style.flexWrap = "wrap";
+            const label = document.createElement("span");
+            label.textContent = labelText;
+            row.appendChild(label);
+            const altBtn = document.createElement("button");
+            altBtn.type = "button";
+            altBtn.className = "greenest-alt-toggle";
+            altBtn.textContent = ACTIVE_LOCALE === "en" ? "Alternatives ▾" : "Alternatiivid ▾";
+            const altList = document.createElement("ul");
+            altList.className = "greenest-alt-list";
+            product.alternatives.forEach((alt) => {
+              const altItem = document.createElement("li");
+              const altBtn2 = document.createElement("button");
+              altBtn2.type = "button";
+              altBtn2.className = "greenest-alt-option" + (alt.inStock === false ? " is-oos" : "");
+              altBtn2.textContent = (alt.name || alt.productName || "") +
+                (alt.inStock === false ? (ACTIVE_LOCALE === "en" ? " (out of stock)" : " (laost otsas)") : "");
+              altBtn2.addEventListener("click", () => {
+                onSwapAlternative(productIdx, alt);
+              });
+              altItem.appendChild(altBtn2);
+              altList.appendChild(altItem);
+            });
+            altBtn.addEventListener("click", () => {
+              const open = altList.classList.contains("is-open");
+              altList.classList.toggle("is-open", !open);
+              altBtn.classList.toggle("is-open", !open);
+              altBtn.textContent = open
+                ? (ACTIVE_LOCALE === "en" ? "Alternatives ▾" : "Alternatiivid ▾")
+                : (ACTIVE_LOCALE === "en" ? "Alternatives ▴" : "Alternatiivid ▴");
+            });
+            row.appendChild(altBtn);
+            item.appendChild(row);
+            item.appendChild(altList);
+          } else {
+            item.textContent = labelText;
+          }
         }
         list.appendChild(item);
       });
@@ -5702,3 +5743,4 @@ function dispatchWidgetReadyEvent(widget) {
     tryInit();
   }
 })();
+
