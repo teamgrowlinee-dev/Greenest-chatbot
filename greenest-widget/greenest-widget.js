@@ -5540,6 +5540,16 @@ function dispatchWidgetReadyEvent(widget) {
       if (Number.isFinite(Number(limit)) && Number(limit) > 0) {
         url.searchParams.set("limit", String(Number(limit)));
       }
+      // Also send product names so backend can use them even if IDs don't match catalog
+      const snapshotItems = Array.isArray(this.externalCartSnapshotItems)
+        ? this.externalCartSnapshotItems
+        : [];
+      const cartNames = snapshotItems
+        .map((item) => String(item.name || "").trim())
+        .filter((n) => n && n !== t("product_fallback_name"));
+      if (cartNames.length) {
+        url.searchParams.set("product_names", cartNames.join(","));
+      }
       console.log("[Greenest] fetchCartRecipeCandidates - URL:", url.toString());
       // Wrap in Promise to ensure it can't hang
       return new Promise((resolve) => {
