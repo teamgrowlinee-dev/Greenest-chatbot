@@ -5560,7 +5560,7 @@ function dispatchWidgetReadyEvent(widget) {
           controller.abort();
           resolve([]);
         }, timeoutMs);
-        fetch(url.toString(), { method: "GET", signal: controller.signal })
+        fetch(url.toString(), { method: "GET", signal: controller.signal, redirect: "follow" })
           .then((res) => {
             clearTimeout(timeoutId);
             return res.text().then((text) => ({ res, text }));
@@ -5570,15 +5570,7 @@ function dispatchWidgetReadyEvent(widget) {
             try { data = JSON.parse(text); } catch (_) { resolve([]); return; }
             if (!res.ok || data.ok === false) { resolve([]); return; }
             const candidates = Array.isArray(data.candidates)
-              ? data.candidates.filter((candidate) => {
-                  const matchCount = Number((candidate && (candidate.match_count || candidate.matchCount)) || 0);
-                  const matchedIds = Array.isArray(candidate && candidate.matched_product_ids)
-                    ? candidate.matched_product_ids
-                    : Array.isArray(candidate && candidate.matchedProductIds)
-                      ? candidate.matchedProductIds
-                      : [];
-                  return matchCount > 0 || matchedIds.length > 0 || candidate.ai_pick === true;
-                })
+              ? data.candidates
               : [];
             console.log("[Greenest] fetchCartRecipeCandidates API returned:", candidates.length, "candidates");
             resolve(candidates);
