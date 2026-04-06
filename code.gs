@@ -2160,7 +2160,7 @@ function buildCartRecipeCandidates_(productIds, limit) {
 
   var bank = loadRecipeBank_();
 
-  // Build full recipe list for AI — no ID-match pre-filter
+  // Build full recipe list
   var allRecipes = bank.map(function (rec) {
     return {
       recipe_id: rec.recipe_id,
@@ -2170,8 +2170,24 @@ function buildCartRecipeCandidates_(productIds, limit) {
     };
   });
 
-  // AI sees full recipe bank and cart product names
-  var aiPicks = pickCartRecipeWithAI_(cartProductNames, allRecipes);
+  // Pre-filter by keyword match to keep AI prompt small and fast
+  // Score each recipe by how many cart product name words appear in recipe name/id
+  var cartTokens = cartProductNames.join(' ').toLowerCase()
+    .split(/\s+/).filter(function(t) { return t.length > 2; });
+
+  var scored = allRecipes.map(function(rec) {
+    var haystack = (rec.recipe_name + ' ' + rec.recipe_id).toLowerCase();
+    var score = 0;
+    cartTokens.forEach(function(tok) { if (haystack.indexOf(tok) !== -1) score++; });
+    return { rec: rec, score: score };
+  });
+  scored.sort(function(a, b) { return b.score - a.score; });
+
+  // Take top 40 — keyword matches first, then fill with others
+  var topRecipes = scored.slice(0, 40).map(function(s) { return s.rec; });
+
+  // AI sees only top candidates — much faster
+  var aiPicks = pickCartRecipeWithAI_(cartProductNames, topRecipes);
   if (aiPicks && aiPicks.length) {
     var aiPickIds = {};
     aiPicks.forEach(function (pick) { aiPickIds[String(pick.id || '').trim()] = pick.reason || ''; });
@@ -2185,8 +2201,8 @@ function buildCartRecipeCandidates_(productIds, limit) {
     return aiResults.slice(0, Math.max(1, limit));
   }
 
-  // Fallback if AI unavailable: return first N recipes
-  return allRecipes.slice(0, Math.max(1, limit));
+  // Fallback: return keyword-matched recipes first
+  return scored.slice(0, Math.max(1, limit)).map(function(s) { return s.rec; });
 }
 
 /*************************************************
