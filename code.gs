@@ -2134,29 +2134,31 @@ function pickCartRecipeWithAI_(cartProductNames, candidates) {
   }
 }
 
-function buildCartRecipeCandidates_(productIds, limit) {
+function buildCartRecipeCandidates_(productIds, limit, extraProductNames) {
   if (!productIds || !productIds.length) return [];
   limit = limit || 20;
 
-  var ids = {};
   var catalogAll = loadAiCatalog_();
   var productsById = indexProductsById_(catalogAll);
-  for (var i = 0; i < productIds.length; i++) {
-    var key = getCanonicalProductKeyFromId_(productIds[i], productsById);
-    if (key) ids[key] = true;
-  }
-  var wanted = Object.keys(ids);
-  if (!wanted.length) return [];
 
-  // Collect cart product names for AI context
+  // Collect cart product names — first from catalog lookup, then from extra names passed by widget
   var cartProductNames = [];
+  var seenNames = {};
   for (var ci = 0; ci < productIds.length; ci++) {
     var cartKey = getCanonicalProductKeyFromId_(productIds[ci], productsById);
     if (cartKey && productsById[cartKey]) {
       var pName = String(productsById[cartKey].productName || productsById[cartKey].product_name || '').trim();
-      if (pName) cartProductNames.push(pName);
+      if (pName && !seenNames[pName]) { seenNames[pName] = true; cartProductNames.push(pName); }
     }
   }
+  // Add extra product names from widget (covers IDs not in catalog)
+  if (Array.isArray(extraProductNames)) {
+    extraProductNames.forEach(function(n) {
+      n = String(n || '').trim();
+      if (n && !seenNames[n]) { seenNames[n] = true; cartProductNames.push(n); }
+    });
+  }
+  if (!cartProductNames.length) return [];
 
   var bank = loadRecipeBank_();
 
@@ -2562,7 +2564,9 @@ function doGet(e) {
       if (!rawProducts) return jsonResponse_({ ok: false, error: 'Missing product_ids' });
       var pidList = rawProducts.split(',').map(function (s) { return String(s || '').trim(); }).filter(Boolean);
       var candLimit = parseNumber_(params.limit || 20);
-      var cands = buildCartRecipeCandidates_(pidList, candLimit);
+      var rawNames = String(params.product_names || '').trim();
+      var extraNames = rawNames ? rawNames.split(',').map(function(s) { return String(s || '').trim(); }).filter(Boolean) : [];
+      var cands = buildCartRecipeCandidates_(pidList, candLimit, extraNames);
       return jsonResponse_({ ok: true, action: 'cartRecipeCandidates', candidates: cands, vendor: VENDOR_NAME, version: BACKEND_VERSION });
     }
 
