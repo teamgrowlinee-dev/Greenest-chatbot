@@ -16,7 +16,7 @@
 var SPREADSHEET_ID = '17_DHr_1NQWUOa-SWUu2t7y0eK2ntB9V24alfZbMMBgE'; // ✅ baked in
 var AI_CATALOG_SHEET = 'AI_catalog';
 var RECIPE_BANK_SHEET = 'Recipe_Bank';
-var RECIPE_MAX_LIST = 50;
+var RECIPE_MAX_LIST = 200;
 
 // --- Affiliate / Tracking ---
 var EVENT_LOG_SHEET = 'Affiliate_Events';
@@ -2642,3 +2642,4 @@ function doGet(e) {
     return jsonResponse_({ ok: false, error: String(err && err.message || err) });
   }
 }
+
