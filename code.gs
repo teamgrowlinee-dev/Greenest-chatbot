@@ -2185,26 +2185,13 @@ function buildCartRecipeCandidates_(productIds, limit, extraProductNames) {
   });
   scored.sort(function(a, b) { return b.score - a.score; });
 
-  // Take top 40 — keyword matches first, then fill with others
-  var topRecipes = scored.slice(0, 40).map(function(s) { return s.rec; });
-
-  // AI sees only top candidates — much faster
-  var aiPicks = pickCartRecipeWithAI_(cartProductNames, topRecipes);
-  if (aiPicks && aiPicks.length) {
-    var aiPickIds = {};
-    aiPicks.forEach(function (pick) { aiPickIds[String(pick.id || '').trim()] = pick.reason || ''; });
-
-    var aiResults = [];
-    allRecipes.forEach(function (c) {
-      if (aiPickIds[c.recipe_id] !== undefined) {
-        aiResults.push(Object.assign({}, c, { ai_reason: aiPickIds[c.recipe_id], ai_pick: true }));
-      }
-    });
-    return aiResults.slice(0, Math.max(1, limit));
-  }
-
-  // Fallback: return keyword-matched recipes first
-  return scored.slice(0, Math.max(1, limit)).map(function(s) { return s.rec; });
+  // Return keyword-matched recipes directly — no AI call needed, fast response
+  var hasMatches = scored.length > 0 && scored[0].score > 0;
+  if (!hasMatches) return [];
+  return scored
+    .filter(function(s) { return s.score > 0; })
+    .slice(0, Math.max(1, limit))
+    .map(function(s) { return s.rec; });
 }
 
 /*************************************************
