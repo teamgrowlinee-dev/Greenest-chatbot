@@ -2103,12 +2103,15 @@ function pickCartRecipeWithAI_(cartProductNames, candidates) {
     ? cartProductNames.join(', ')
     : '(tundmatud tooted)';
 
-  var lines = candidates.map(function (c) {
+  // Limit to 25 candidates to keep prompt small and fast
+  var limited = candidates.slice(0, 25);
+  var lines = limited.map(function (c) {
     return c.recipe_id + '|' + c.recipe_name;
   });
 
   var prompt = [
     'Kliendi ostukorvis on: ' + cartList,
+    '(Toote nimed võivad olla poola, inglise või eesti keeles — tõlgi ise.)',
     '',
     'Retseptid (id|nimi):',
     lines.join('\n'),
@@ -2184,50 +2187,10 @@ function buildCartRecipeCandidates_(productIds, limit, extraProductNames) {
     };
   });
 
-  // ── ETAPP 1: keyword pre-filter ─────────────────────────────────────────
-  // Tõlkimiskaart: poola/inglise toidusõnad → eesti (keyword matching jaoks)
-  var TRANSLATE = {
-    'kasza': 'tatar', 'gryczana': 'tatar', 'gryczany': 'tatar', 'buckwheat': 'tatar',
-    'palona': 'röstitud', 'palone': 'röstitud', 'roasted': 'röstitud', 'rostitud': 'röstitud',
-    'coconut': 'kookos', 'kokos': 'kookos', 'kokosowy': 'kookos', 'kokosowe': 'kookos',
-    'chickpea': 'kikerherned', 'ciecierzyca': 'kikerherned',
-    'lentil': 'läätsed', 'soczewica': 'läätsed',
-    'pasta': 'pasta', 'makaron': 'pasta',
-    'oat': 'kaer', 'oats': 'kaer', 'owies': 'kaer',
-    'rice': 'riis', 'ryz': 'riis', 'ryż': 'riis',
-    'mung': 'mungoad', 'bean': 'oad', 'beans': 'oad',
-    'quinoa': 'kinoa', 'amaranth': 'amarant',
-    'almond': 'mandlid', 'cashew': 'india',
-    'chocolate': 'kakao', 'kakao': 'kakao',
-    'porridge': 'puder', 'soup': 'supp', 'salad': 'salat',
-    'curry': 'karri', 'karri': 'karri'
-  };
-
-  var rawText = cartProductNames.join(' ').toLowerCase();
-  // Asenda tõlkesõnad
-  Object.keys(TRANSLATE).forEach(function(foreign) {
-    rawText = rawText.replace(new RegExp(foreign, 'g'), TRANSLATE[foreign]);
-  });
-  var cartTokens = rawText.split(/\s+/).filter(function(t) { return t.length > 2; });
-
-  var scored = allRecipes.map(function(rec) {
-    var haystack = (rec.recipe_name + ' ' + rec.recipe_id).toLowerCase();
-    var score = 0;
-    cartTokens.forEach(function(tok) { if (haystack.indexOf(tok) !== -1) score++; });
-    return { rec: rec, score: score };
-  });
-  scored.sort(function(a, b) { return b.score - a.score; });
-
-  // Take top 20 keyword matches + top 10 general (in case no keyword matches)
-  var keywordMatches = scored.filter(function(s) { return s.score > 0; }).slice(0, 20);
-  var candidates = keywordMatches.length >= 3
-    ? keywordMatches
-    : scored.slice(0, 20); // fallback: take top 20 if few keyword hits
-
-  var candidateRecipes = candidates.map(function(s) { return s.rec; });
-
-  // ── ETAPP 2+3: AI filtreerib ja valib ───────────────────────────────────
-  var aiPicks = pickCartRecipeWithAI_(cartProductNames, candidateRecipes);
+  // ── AI valib retseptid otse (ei sõltu keelest) ──────────────────────────
+  // Saada AI-le kõik retseptid + cart toote nimed mis tahes keeles
+  // AI tunneb ära "kasza gryczana" = tatar, "palona" = röstitud jne
+  var aiPicks = pickCartRecipeWithAI_(cartProductNames, allRecipes);
   if (aiPicks && aiPicks.length) {
     var aiPickIds = {};
     aiPicks.forEach(function(pick) { aiPickIds[String(pick.id || '').trim()] = pick.reason || ''; });
@@ -2240,8 +2203,8 @@ function buildCartRecipeCandidates_(productIds, limit, extraProductNames) {
     if (aiResults.length) return aiResults.slice(0, Math.max(1, limit));
   }
 
-  // Fallback: keyword matches ilma AI-ta
-  return candidateRecipes.slice(0, Math.max(1, limit));
+  // Fallback ilma AI-ta: esimesed retseptid
+  return allRecipes.slice(0, Math.max(1, limit));
 }
 
 /*************************************************
