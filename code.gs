@@ -588,6 +588,11 @@ function expandIngredientProductIds_(idLike, index) {
  * Andmete laadimine: AI_catalog
  *************************************************/
 function loadAiCatalog_() {
+  var cache = CacheService.getScriptCache();
+  var cached = cache.get('AI_CATALOG');
+  if (cached) {
+    try { return JSON.parse(cached); } catch(e) {}
+  }
   var ss = getSpreadsheet_();
   var sh = ss.getSheetByName(AI_CATALOG_SHEET);
   if (!sh) throw new Error('Sheet "' + AI_CATALOG_SHEET + '" ei leitud.');
@@ -646,6 +651,7 @@ function loadAiCatalog_() {
     });
   }
 
+  try { cache.put('AI_CATALOG', JSON.stringify(rows), 300); } catch(e) {}
   return rows;
 }
 
@@ -669,6 +675,11 @@ function indexProductsById_(products) {
  * Andmete laadimine: Recipe_Bank
  *************************************************/
 function loadRecipeBank_() {
+  var cache = CacheService.getScriptCache();
+  var cached = cache.get('RECIPE_BANK');
+  if (cached) {
+    try { return JSON.parse(cached); } catch(e) {}
+  }
   var ss = getSpreadsheet_();
   var sh = ss.getSheetByName(RECIPE_BANK_SHEET);
   if (!sh) throw new Error('Sheet "' + RECIPE_BANK_SHEET + '" ei leitud.');
@@ -736,6 +747,7 @@ function loadRecipeBank_() {
     out.push(rec);
   }
 
+  try { cache.put('RECIPE_BANK', JSON.stringify(out), 300); } catch(e) {}
   return out;
 }
 
@@ -2172,10 +2184,31 @@ function buildCartRecipeCandidates_(productIds, limit, extraProductNames) {
     };
   });
 
-  // Pre-filter by keyword match to keep AI prompt small and fast
-  // Score each recipe by how many cart product name words appear in recipe name/id
-  var cartTokens = cartProductNames.join(' ').toLowerCase()
-    .split(/\s+/).filter(function(t) { return t.length > 2; });
+  // ── ETAPP 1: keyword pre-filter ─────────────────────────────────────────
+  // Tõlkimiskaart: poola/inglise toidusõnad → eesti (keyword matching jaoks)
+  var TRANSLATE = {
+    'kasza': 'tatar', 'gryczana': 'tatar', 'gryczany': 'tatar', 'buckwheat': 'tatar',
+    'palona': 'röstitud', 'palone': 'röstitud', 'roasted': 'röstitud', 'rostitud': 'röstitud',
+    'coconut': 'kookos', 'kokos': 'kookos', 'kokosowy': 'kookos', 'kokosowe': 'kookos',
+    'chickpea': 'kikerherned', 'ciecierzyca': 'kikerherned',
+    'lentil': 'läätsed', 'soczewica': 'läätsed',
+    'pasta': 'pasta', 'makaron': 'pasta',
+    'oat': 'kaer', 'oats': 'kaer', 'owies': 'kaer',
+    'rice': 'riis', 'ryz': 'riis', 'ryż': 'riis',
+    'mung': 'mungoad', 'bean': 'oad', 'beans': 'oad',
+    'quinoa': 'kinoa', 'amaranth': 'amarant',
+    'almond': 'mandlid', 'cashew': 'india',
+    'chocolate': 'kakao', 'kakao': 'kakao',
+    'porridge': 'puder', 'soup': 'supp', 'salad': 'salat',
+    'curry': 'karri', 'karri': 'karri'
+  };
+
+  var rawText = cartProductNames.join(' ').toLowerCase();
+  // Asenda tõlkesõnad
+  Object.keys(TRANSLATE).forEach(function(foreign) {
+    rawText = rawText.replace(new RegExp(foreign, 'g'), TRANSLATE[foreign]);
+  });
+  var cartTokens = rawText.split(/\s+/).filter(function(t) { return t.length > 2; });
 
   var scored = allRecipes.map(function(rec) {
     var haystack = (rec.recipe_name + ' ' + rec.recipe_id).toLowerCase();
@@ -2185,13 +2218,30 @@ function buildCartRecipeCandidates_(productIds, limit, extraProductNames) {
   });
   scored.sort(function(a, b) { return b.score - a.score; });
 
-  // Return keyword-matched recipes directly — no AI call needed, fast response
-  var hasMatches = scored.length > 0 && scored[0].score > 0;
-  if (!hasMatches) return [];
-  return scored
-    .filter(function(s) { return s.score > 0; })
-    .slice(0, Math.max(1, limit))
-    .map(function(s) { return s.rec; });
+  // Take top 20 keyword matches + top 10 general (in case no keyword matches)
+  var keywordMatches = scored.filter(function(s) { return s.score > 0; }).slice(0, 20);
+  var candidates = keywordMatches.length >= 3
+    ? keywordMatches
+    : scored.slice(0, 20); // fallback: take top 20 if few keyword hits
+
+  var candidateRecipes = candidates.map(function(s) { return s.rec; });
+
+  // ── ETAPP 2+3: AI filtreerib ja valib ───────────────────────────────────
+  var aiPicks = pickCartRecipeWithAI_(cartProductNames, candidateRecipes);
+  if (aiPicks && aiPicks.length) {
+    var aiPickIds = {};
+    aiPicks.forEach(function(pick) { aiPickIds[String(pick.id || '').trim()] = pick.reason || ''; });
+    var aiResults = [];
+    allRecipes.forEach(function(c) {
+      if (aiPickIds[c.recipe_id] !== undefined) {
+        aiResults.push(Object.assign({}, c, { ai_reason: aiPickIds[c.recipe_id], ai_pick: true }));
+      }
+    });
+    if (aiResults.length) return aiResults.slice(0, Math.max(1, limit));
+  }
+
+  // Fallback: keyword matches ilma AI-ta
+  return candidateRecipes.slice(0, Math.max(1, limit));
 }
 
 /*************************************************
