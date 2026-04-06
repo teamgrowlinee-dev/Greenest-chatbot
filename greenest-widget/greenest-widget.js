@@ -5553,7 +5553,7 @@ function dispatchWidgetReadyEvent(widget) {
       console.log("[Greenest] fetchCartRecipeCandidates - URL:", url.toString());
       // Wrap in Promise to ensure it can't hang
       return new Promise((resolve) => {
-        const timeoutMs = 20000;
+        const timeoutMs = 12000;
         const controller = new AbortController();
         const timeoutId = setTimeout(() => {
           console.log("[Greenest] fetchCartRecipeCandidates - timeout triggered");
