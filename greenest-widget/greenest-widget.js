@@ -4613,9 +4613,7 @@ function dispatchWidgetReadyEvent(widget) {
 
     applyExternalCartSnapshot(items, reason, options = {}) {
       const normalized = this.normalizeCartItemsForWidget(items);
-      const prevItems =
-        this.cart && Array.isArray(this.cart.items) ? this.cart.items : [];
-      const prevSig = makeCartSnapshotSignature(prevItems);
+      const prevSig = this._externalCartPrevSig || "";
       const nextSig = makeCartSnapshotSignature(normalized);
       const changed = nextSig !== prevSig;
       if (!changed && this.externalCartHydrated === true && options.forceRefresh !== true) {
@@ -4624,6 +4622,7 @@ function dispatchWidgetReadyEvent(widget) {
       // Only sync for recipe candidate lookup — do NOT overwrite widget cart contents.
       // Replacing this.cart with external data caused unexpected products on page refresh.
       this.externalCartSnapshotItems = normalized;
+      this._externalCartPrevSig = nextSig;
       this.externalCartHydrated = true;
       if (!changed && options.forceRefresh !== true) {
         return false;
@@ -5540,6 +5539,7 @@ function dispatchWidgetReadyEvent(widget) {
       if (Number.isFinite(Number(limit)) && Number(limit) > 0) {
         url.searchParams.set("limit", String(Number(limit)));
       }
+      url.searchParams.set("_ts", String(Date.now()));
       // Also send product names so backend can use them even if IDs don't match catalog
       const snapshotItems = Array.isArray(this.externalCartSnapshotItems)
         ? this.externalCartSnapshotItems
